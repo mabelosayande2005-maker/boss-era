@@ -1,10 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Nav from "@/components/Nav";
 
 export const metadata: Metadata = {
   title: "Boss Era ✦",
   description: "Mabel's personal life dashboard",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -20,7 +26,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full">
         <Nav />
-        <main className="pb-32 md:pb-8 pt-4 px-4 md:px-8 max-w-6xl mx-auto">
+        <main className="main-pad pt-4 px-4 md:px-8 max-w-6xl mx-auto">
           {children}
         </main>
       </body>
