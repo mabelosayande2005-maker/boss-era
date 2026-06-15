@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-git)",
+      "Bash(sudo chown -R 501:20 \"/Users/mabelosayande/.npm\")",
+      "Bash(pnpm --version)",
+      "Bash(yarn --version)",
+      "Bash(bun --version)",
+      "Bash(npm --version)",
+      "Bash(npm install *)",
+      "Bash(npm cache *)",
+      "Bash(mkdir -p /Users/mabelosayande/boss-era/.npm-cache)",
+      "Bash(npm config *)",
+      "Bash(npm_config_cache=/Users/mabelosayande/boss-era/.npm-cache npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-git)",
+      "Bash(npm_config_cache=/Users/mabelosayande/boss-era/.npm-cache npm install @neondatabase/serverless drizzle-orm drizzle-kit date-fns lucide-react clsx tailwind-merge @vercel/blob)",
+      "Bash(npm_config_cache=/Users/mabelosayande/boss-era/.npm-cache npm run build)",
+      "Bash(npm_config_cache=/Users/mabelosayande/boss-era/.npm-cache npm run dev)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(npm_config_cache=.npm-cache npm run build)"
+    ]
+  }
+}
