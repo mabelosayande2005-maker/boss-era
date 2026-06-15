@@ -20,7 +20,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full">
         <Nav />
-        <main className="pb-24 md:pb-8 pt-4 px-4 md:px-8 max-w-6xl mx-auto">
+        <main className="pb-32 md:pb-8 pt-4 px-4 md:px-8 max-w-6xl mx-auto">
           {children}
         </main>
       </body>

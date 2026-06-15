@@ -1,9 +1,29 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+async function ensureTables() {
+  const sql = getDb();
+  await sql`CREATE TABLE IF NOT EXISTS habits (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    emoji TEXT,
+    target_per_week INTEGER DEFAULT 1,
+    color TEXT DEFAULT '#b8d4c8',
+    created_at TIMESTAMP DEFAULT NOW()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS habit_completions (
+    id SERIAL PRIMARY KEY,
+    habit_id INTEGER REFERENCES habits(id) ON DELETE CASCADE,
+    completed_date DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(habit_id, completed_date)
+  )`;
+}
+
 export async function GET(req: Request) {
   try {
     const sql = getDb();
+    await ensureTables();
     const { searchParams } = new URL(req.url);
     // weekStart = ISO date of the Monday of the requested week
     const weekStart = searchParams.get("weekStart") ?? new Date().toISOString().split("T")[0];
@@ -37,6 +57,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const sql = getDb();
+    await ensureTables();
     const body = await req.json();
     const { action, habitId, date, name, emoji, color, targetPerWeek, id } = body;
 

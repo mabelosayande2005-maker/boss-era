@@ -16,7 +16,8 @@
       "Bash(npm_config_cache=/Users/mabelosayande/boss-era/.npm-cache npm run build)",
       "Bash(npm_config_cache=/Users/mabelosayande/boss-era/.npm-cache npm run dev)",
       "Bash(curl -s http://localhost:3000)",
-      "Bash(npm_config_cache=.npm-cache npm run build)"
+      "Bash(npm_config_cache=.npm-cache npm run build)",
+      "Bash(npm_config_cache=.npm-cache npx tsc --noEmit)"
     ]
   }
 }

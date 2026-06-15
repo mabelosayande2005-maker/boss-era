@@ -1,9 +1,21 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+async function ensureTables() {
+  const sql = getDb();
+  await sql`CREATE TABLE IF NOT EXISTS mood_logs (
+    id SERIAL PRIMARY KEY,
+    log_date DATE NOT NULL UNIQUE,
+    score INTEGER CHECK (score >= 1 AND score <= 5),
+    note TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`;
+}
+
 export async function GET() {
   try {
     const sql = getDb();
+    await ensureTables();
     const today = new Date().toISOString().split("T")[0];
     const [mood] = await sql`SELECT * FROM mood_logs WHERE log_date = ${today}`;
     return NextResponse.json({ mood: mood || null });
@@ -15,6 +27,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const sql = getDb();
+    await ensureTables();
     const { score, note } = await req.json();
     const today = new Date().toISOString().split("T")[0];
     const [mood] = await sql`

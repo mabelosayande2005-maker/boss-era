@@ -15,6 +15,14 @@ const navItems = [
   { href: "/wellbeing", label: "Wellbeing", emoji: "🌸" },
   { href: "/wardrobe", label: "Wardrobe", emoji: "👗" },
   { href: "/finance", label: "Finance", emoji: "📊" },
+  { href: "/goals", label: "Goals", emoji: "🌟" },
+  { href: "/learning", label: "Learning", emoji: "📚" },
+  { href: "/cookbook", label: "Cookbook", emoji: "🍽️" },
+  { href: "/travel", label: "Travel", emoji: "✈️" },
+  { href: "/social", label: "Social", emoji: "🥂" },
+  { href: "/music", label: "Music", emoji: "🎵" },
+  { href: "/notes", label: "Notes", emoji: "📝" },
+  { href: "/affirmations", label: "Affirmations", emoji: "✨" },
 ];
 
 export default function Nav() {

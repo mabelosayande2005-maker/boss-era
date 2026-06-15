@@ -1,9 +1,25 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+async function ensureTables() {
+  const sql = getDb();
+  await sql`CREATE TABLE IF NOT EXISTS tasks (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    stream TEXT DEFAULT 'admin',
+    due_date DATE,
+    completed BOOLEAN DEFAULT FALSE,
+    completed_at TIMESTAMP,
+    notes TEXT,
+    is_today BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`;
+}
+
 export async function GET() {
   try {
     const sql = getDb();
+    await ensureTables();
     const today = new Date().toISOString().split("T")[0];
     const tasks = await sql`
       SELECT * FROM tasks
@@ -19,6 +35,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const sql = getDb();
+    await ensureTables();
     const body = await req.json();
     const { action, taskId, title, stream, dueDate, notes } = body;
 
