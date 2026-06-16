@@ -1,4 +1,10 @@
-import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
+import { neon, neonConfig, type NeonQueryFunction } from "@neondatabase/serverless";
+
+// Tell Neon to use a fetch that opts out of Next.js's data cache.
+// Without this, Next.js 15 can silently cache Neon's HTTP responses and
+// serve stale (often empty) DB results on every subsequent request.
+neonConfig.fetchFunction = (url: RequestInfo | URL, init?: RequestInit) =>
+  fetch(url, { ...init, cache: "no-store" });
 
 let _sql: NeonQueryFunction<false, false> | null = null;
 

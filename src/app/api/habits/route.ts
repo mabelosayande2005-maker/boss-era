@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 async function ensureTables() {
   const sql = getDb();
   await sql`CREATE TABLE IF NOT EXISTS habits (
@@ -49,8 +51,9 @@ export async function GET(req: Request) {
       completions,           // {habit_id, completed_date}[] for the full week
       completedToday: todayCompletions.map((c) => c.habit_id as number),
     });
-  } catch {
-    return NextResponse.json({ habits: [], completions: [], completedToday: [] });
+  } catch (e) {
+    console.error("[habits GET]", e);
+    return NextResponse.json({ error: String(e), habits: [], completions: [], completedToday: [] }, { status: 500 });
   }
 }
 

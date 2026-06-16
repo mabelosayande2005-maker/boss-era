@@ -71,11 +71,11 @@ export default function HabitsPage() {
   const isCurrentWeek = weekStartISO === toISO(weekMonday(new Date()));
 
   const fetchWeek = useCallback(async (forceHabits = false) => {
-    // First ever load (or after seeding): show skeleton and load habits + completions
+    // First ever load (or after a mutation): show skeleton and load habits + completions
     if (!habitsLoaded.current || forceHabits) {
       setLoading(true);
       try {
-        const res  = await fetch(`/api/habits?weekStart=${weekStartISO}`);
+        const res  = await fetch(`/api/habits?weekStart=${weekStartISO}`, { cache: "no-store" });
         const data = await res.json();
         setHabits(data.habits ?? []);
         setCompletions(data.completions ?? []);
@@ -84,9 +84,8 @@ export default function HabitsPage() {
       setLoading(false);
     } else {
       // Week navigation: habits don't change between weeks — only swap completions.
-      // No loading state: cells update in place with their existing CSS transitions.
       try {
-        const res  = await fetch(`/api/habits?weekStart=${weekStartISO}`);
+        const res  = await fetch(`/api/habits?weekStart=${weekStartISO}`, { cache: "no-store" });
         const data = await res.json();
         setCompletions(data.completions ?? []);
       } catch {}
@@ -153,34 +152,30 @@ export default function HabitsPage() {
 
   const saveHabit = async () => {
     if (!fName.trim()) return;
-    if (editHabit) {
-      const res  = await fetch("/api/habits", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ action: "edit", id: editHabit.id, name: fName.trim(), emoji: fEmoji, color: fColor, targetPerWeek: fTarget }),
-      });
-      const data = await res.json();
-      if (data.habit) setHabits((prev) => prev.map((h) => (h.id === editHabit.id ? data.habit : h)));
-    } else {
-      const res  = await fetch("/api/habits", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ action: "add", name: fName.trim(), emoji: fEmoji, color: fColor, targetPerWeek: fTarget }),
-      });
-      const data = await res.json();
-      if (data.habit) setHabits((prev) => [...prev, data.habit]);
-    }
+    await fetch("/api/habits", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(
+        editHabit
+          ? { action: "edit", id: editHabit.id, name: fName.trim(), emoji: fEmoji, color: fColor, targetPerWeek: fTarget }
+          : { action: "add",  name: fName.trim(), emoji: fEmoji, color: fColor, targetPerWeek: fTarget }
+      ),
+    });
     setShowForm(false);
     setEditHabit(null);
+    // Always re-fetch from DB so the UI reflects actual persisted state
+    habitsLoaded.current = false;
+    fetchWeek(true);
   };
 
   const deleteHabit = async (id: number) => {
-    setHabits((prev) => prev.filter((h) => h.id !== id));
     await fetch("/api/habits", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ action: "delete", id }),
     });
+    habitsLoaded.current = false;
+    fetchWeek(true);
   };
 
   const seedHabits = async () => {
