@@ -77,7 +77,16 @@ export default function HabitsPage() {
       }
       const data = await res.json();
       setHabits(data.habits ?? []);
-      setCompletions(data.completions ?? []);
+      // Neon returns DATE columns as JS Date objects in some runtimes.
+      // Normalise to "yyyy-MM-dd" strings so .startsWith() never throws.
+      setCompletions(
+        (data.completions ?? []).map((c: { habit_id: number; completed_date: unknown }) => ({
+          habit_id: c.habit_id as number,
+          completed_date: c.completed_date instanceof Date
+            ? c.completed_date.toISOString().slice(0, 10)
+            : String(c.completed_date).slice(0, 10),
+        }))
+      );
     } catch (e) {
       setFetchError(e instanceof Error ? e.message : String(e));
     } finally {
