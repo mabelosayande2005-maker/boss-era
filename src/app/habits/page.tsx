@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRef } from "react";
 import {
   format,
   startOfWeek,
@@ -10,7 +9,6 @@ import {
   subWeeks,
   isToday,
   isFuture,
-  parseISO,
 } from "date-fns";
 import { ChevronLeft, ChevronRight, Plus, X, Check, Pencil } from "lucide-react";
 
@@ -52,9 +50,7 @@ export default function HabitsPage() {
   const [completions, setCompletions] = useState<Completion[]>([]);
   const [weekAnchor, setWeekAnchor]   = useState(() => weekMonday(new Date()));
   const [loading, setLoading]         = useState(true);
-  // Ref tracks whether habits have been fetched at least once.
-  // Using a ref (not state) means flipping it never causes a re-render.
-  const habitsLoaded = useRef(false);
+  const [fetchError, setFetchError]   = useState<string | null>(null);
   const [showForm, setShowForm]       = useState(false);
   const [editHabit, setEditHabit]     = useState<Habit | null>(null);
 
@@ -70,25 +66,22 @@ export default function HabitsPage() {
   const weekLabel    = `${format(weekStart, "d MMM")} – ${format(days[6], "d MMM yyyy")}`;
   const isCurrentWeek = weekStartISO === toISO(weekMonday(new Date()));
 
-  const fetchWeek = useCallback(async (forceHabits = false) => {
-    // First ever load (or after a mutation): show skeleton and load habits + completions
-    if (!habitsLoaded.current || forceHabits) {
-      setLoading(true);
-      try {
-        const res  = await fetch(`/api/habits?weekStart=${weekStartISO}`, { cache: "no-store" });
-        const data = await res.json();
-        setHabits(data.habits ?? []);
-        setCompletions(data.completions ?? []);
-        habitsLoaded.current = true;
-      } catch {}
+  const fetchWeek = useCallback(async () => {
+    setLoading(true);
+    setFetchError(null);
+    try {
+      const res = await fetch(`/api/habits?weekStart=${weekStartISO}`, { cache: "no-store" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setHabits(data.habits ?? []);
+      setCompletions(data.completions ?? []);
+    } catch (e) {
+      setFetchError(e instanceof Error ? e.message : String(e));
+    } finally {
       setLoading(false);
-    } else {
-      // Week navigation: habits don't change between weeks — only swap completions.
-      try {
-        const res  = await fetch(`/api/habits?weekStart=${weekStartISO}`, { cache: "no-store" });
-        const data = await res.json();
-        setCompletions(data.completions ?? []);
-      } catch {}
     }
   }, [weekStartISO]);
 
@@ -163,9 +156,7 @@ export default function HabitsPage() {
     });
     setShowForm(false);
     setEditHabit(null);
-    // Always re-fetch from DB so the UI reflects actual persisted state
-    habitsLoaded.current = false;
-    fetchWeek(true);
+    fetchWeek();
   };
 
   const deleteHabit = async (id: number) => {
@@ -174,8 +165,7 @@ export default function HabitsPage() {
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ action: "delete", id }),
     });
-    habitsLoaded.current = false;
-    fetchWeek(true);
+    fetchWeek();
   };
 
   const seedHabits = async () => {
@@ -184,8 +174,7 @@ export default function HabitsPage() {
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ action: "seed" }),
     });
-    habitsLoaded.current = false; // force full reload so new habits appear
-    fetchWeek(true);
+    fetchWeek();
   };
 
   // ── score label ──────────────────────────────────────────────────────────
@@ -293,8 +282,31 @@ export default function HabitsPage() {
         </div>
       </div>
 
+      {/* Error banner */}
+      {fetchError && (
+        <div className="card px-5 py-4 flex items-start gap-3" style={{ background: "var(--rose-pale)", border: "1px solid rgba(232,180,184,0.5)" }}>
+          <span className="text-lg">⚠️</span>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: "#b06070" }}>Could not load habits</p>
+            <p className="text-xs mt-0.5 font-mono" style={{ color: "#b06070" }}>{fetchError}</p>
+          </div>
+          <button onClick={fetchWeek} className="ml-auto text-xs btn-primary" style={{ background: "var(--rose)", color: "white" }}>Retry</button>
+        </div>
+      )}
+
+      {/* Loading skeleton — shown any time we're fetching */}
+      {loading && (
+        <div className="card overflow-hidden">
+          <div className="px-4 py-3 space-y-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="h-10 rounded-xl animate-pulse" style={{ background: "var(--cream-dark)" }} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* No habits yet */}
-      {!loading && habits.length === 0 && (
+      {!loading && !fetchError && habits.length === 0 && (
         <div className="card px-5 py-8 text-center">
           <div className="text-3xl mb-3">🌿</div>
           <p className="font-display font-bold italic text-lg mb-1" style={{ color: "var(--text-dark)" }}>
@@ -311,7 +323,7 @@ export default function HabitsPage() {
       )}
 
       {/* Weekly grid */}
-      {habits.length > 0 && (
+      {!loading && habits.length > 0 && (
         <div className="card overflow-hidden">
           {/* Day header */}
           <div
@@ -341,16 +353,9 @@ export default function HabitsPage() {
             ))}
           </div>
 
-          {/* Habit rows — only skeleton on very first paint */}
-          {loading ? (
-            <div className="px-4 py-3 space-y-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-10 rounded-xl animate-pulse" style={{ background: "var(--cream-dark)" }} />
-              ))}
-            </div>
-          ) : (
-            <div className="divide-y" style={{ borderColor: "rgba(200,184,224,0.12)" }}>
-              {habits.map((habit) => {
+          {/* Habit rows */}
+          <div className="divide-y" style={{ borderColor: "rgba(200,184,224,0.12)" }}>
+            {habits.map((habit) => {
                 const count   = doneCountThisWeek(habit.id);
                 const metGoal = count >= habit.target_per_week;
 
@@ -439,9 +444,8 @@ export default function HabitsPage() {
                     })}
                   </div>
                 );
-              })}
-            </div>
-          )}
+            })}
+          </div>
 
           {/* Add habit row */}
           <div
