@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
+const norm = (d: unknown) =>
+  d == null ? null : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+
 async function ensureTables() {
   const sql = getDb();
   await sql`CREATE TABLE IF NOT EXISTS finance_categories (
@@ -33,6 +38,14 @@ async function ensureTables() {
   )`;
 }
 
+function normExpense(e: Record<string, unknown>) {
+  return { ...e, expense_date: norm(e.expense_date) };
+}
+
+function normSaving(s: Record<string, unknown>) {
+  return { ...s, deadline: norm(s.deadline) };
+}
+
 export async function GET(req: Request) {
   try {
     const sql = getDb();
@@ -56,9 +69,16 @@ export async function GET(req: Request) {
     `;
     const totalBudget = categories.reduce((s, c) => s + parseFloat(String(c.monthly_budget || 0)), 0);
 
-    return NextResponse.json({ categories, expenses, savings, totals, totalBudget });
+    return NextResponse.json({
+      categories,
+      expenses: expenses.map(e => normExpense(e as Record<string, unknown>)),
+      savings: savings.map(s => normSaving(s as Record<string, unknown>)),
+      totals,
+      totalBudget,
+    });
   } catch (e) {
-    return NextResponse.json({ categories: [], expenses: [], savings: [], totals: { total_spent: 0 }, totalBudget: 0, error: String(e) });
+    console.error("[finance GET]", e);
+    return NextResponse.json({ categories: [], expenses: [], savings: [], totals: { total_spent: 0 }, totalBudget: 0, error: String(e) }, { status: 500 });
   }
 }
 
@@ -100,7 +120,7 @@ export async function POST(req: Request) {
         VALUES (${title}, ${amount}, ${categoryId || null}, ${expenseDate || null}, ${notes || null})
         RETURNING *
       `;
-      return NextResponse.json({ expense: exp });
+      return NextResponse.json({ expense: normExpense(exp as Record<string, unknown>) });
     }
 
     if (action === "delete-expense") {
@@ -115,7 +135,7 @@ export async function POST(req: Request) {
         VALUES (${name}, ${targetAmount}, ${currentAmount || 0}, ${deadline || null}, ${emoji || "🐷"}, ${color || "#e8b4b8"}, ${notes || null})
         RETURNING *
       `;
-      return NextResponse.json({ saving: sav });
+      return NextResponse.json({ saving: normSaving(sav as Record<string, unknown>) });
     }
 
     if (action === "update-savings") {
@@ -123,7 +143,7 @@ export async function POST(req: Request) {
       const [sav] = await sql`
         UPDATE finance_savings SET current_amount=${currentAmount} WHERE id=${id} RETURNING *
       `;
-      return NextResponse.json({ saving: sav });
+      return NextResponse.json({ saving: normSaving(sav as Record<string, unknown>) });
     }
 
     if (action === "delete-savings") {
@@ -133,6 +153,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
+    console.error("[finance POST]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

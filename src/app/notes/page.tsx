@@ -73,7 +73,7 @@ export default function NotesPage() {
     setLoading(true);
     try {
       const url = tagFilter ? `/api/notes?tag=${encodeURIComponent(tagFilter)}` : "/api/notes";
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: "no-store" });
       const data = await res.json();
       setNotes(data.notes || []);
       setTags(data.tags || []);

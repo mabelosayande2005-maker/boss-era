@@ -40,7 +40,7 @@ export default function WellbeingPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/wellbeing?days=14");
+      const res = await fetch("/api/wellbeing?days=14", { cache: "no-store" });
       const data = await res.json();
       setHistory(data.logs || []);
       if (data.todayLog) {

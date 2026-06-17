@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
+const norm = (d: unknown) =>
+  d == null ? null : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+
 async function ensureTables() {
   const sql = getDb();
   await sql`CREATE TABLE IF NOT EXISTS mood_logs (
@@ -18,8 +23,9 @@ export async function GET() {
     await ensureTables();
     const today = new Date().toISOString().split("T")[0];
     const [mood] = await sql`SELECT * FROM mood_logs WHERE log_date = ${today}`;
-    return NextResponse.json({ mood: mood || null });
-  } catch {
+    return NextResponse.json({ mood: mood ? { ...mood, log_date: norm(mood.log_date) } : null });
+  } catch (e) {
+    console.error("[mood GET]", e);
     return NextResponse.json({ mood: null });
   }
 }
@@ -36,8 +42,9 @@ export async function POST(req: Request) {
       ON CONFLICT (log_date) DO UPDATE SET score = ${score}, note = ${note || null}
       RETURNING *
     `;
-    return NextResponse.json({ mood });
+    return NextResponse.json({ mood: { ...mood, log_date: norm(mood.log_date) } });
   } catch (e) {
+    console.error("[mood POST]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

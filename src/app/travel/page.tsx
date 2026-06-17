@@ -112,7 +112,7 @@ export default function TravelPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/travel");
+      const res = await fetch("/api/travel", { cache: "no-store" });
       const data = await res.json();
       setTrips(data.trips || []);
       setBucket(data.bucket || []);

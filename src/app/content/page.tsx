@@ -189,7 +189,7 @@ export default function ContentPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res  = await fetch(`/api/content?weekStart=${weekStartISO}`);
+      const res  = await fetch(`/api/content?weekStart=${weekStartISO}`, { cache: "no-store" });
       const data = await res.json();
       setScheduled(data.scheduled ?? []);
       setIdeas(data.ideas ?? []);

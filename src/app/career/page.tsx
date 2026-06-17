@@ -131,7 +131,7 @@ export default function CareerPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res  = await fetch("/api/career");
+      const res  = await fetch("/api/career", { cache: "no-store" });
       const data = await res.json();
       setApplications(data.applications ?? []);
       setBrands(data.brands             ?? []);

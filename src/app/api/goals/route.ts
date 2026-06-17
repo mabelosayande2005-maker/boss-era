@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
+const norm = (d: unknown) =>
+  d == null ? null : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+
 async function ensureTables() {
   const sql = getDb();
   await sql`CREATE TABLE IF NOT EXISTS goals (
@@ -25,6 +30,10 @@ async function ensureTables() {
   )`;
 }
 
+function normGoal(g: Record<string, unknown>) {
+  return { ...g, target_date: norm(g.target_date) };
+}
+
 export async function GET() {
   try {
     const sql = getDb();
@@ -32,12 +41,13 @@ export async function GET() {
     const goals = await sql`SELECT * FROM goals ORDER BY status ASC, target_date ASC NULLS LAST, created_at DESC`;
     const milestones = await sql`SELECT * FROM goal_milestones ORDER BY completed ASC, created_at ASC`;
     const goalsWithMilestones = goals.map(g => ({
-      ...g,
+      ...normGoal(g as Record<string, unknown>),
       milestones: milestones.filter(m => m.goal_id === g.id),
     }));
     return NextResponse.json({ goals: goalsWithMilestones });
   } catch (e) {
-    return NextResponse.json({ goals: [], error: String(e) });
+    console.error("[goals GET]", e);
+    return NextResponse.json({ goals: [], error: String(e) }, { status: 500 });
   }
 }
 
@@ -55,7 +65,7 @@ export async function POST(req: Request) {
         VALUES (${title}, ${description || null}, ${category || "personal"}, ${emoji || "🌟"}, ${targetDate || null}, ${color || "#b8d4c8"})
         RETURNING *
       `;
-      return NextResponse.json({ goal: { ...goal, milestones: [] } });
+      return NextResponse.json({ goal: { ...normGoal(goal as Record<string, unknown>), milestones: [] } });
     }
 
     if (action === "update-progress") {
@@ -64,7 +74,7 @@ export async function POST(req: Request) {
       const [goal] = await sql`
         UPDATE goals SET progress_pct=${progress}, status=${status} WHERE id=${id} RETURNING *
       `;
-      return NextResponse.json({ goal });
+      return NextResponse.json({ goal: normGoal(goal as Record<string, unknown>) });
     }
 
     if (action === "delete-goal") {
@@ -97,6 +107,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
+    console.error("[goals POST]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

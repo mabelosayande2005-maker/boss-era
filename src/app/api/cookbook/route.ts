@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 async function ensureTables() {
   const sql = getDb();
   await sql`CREATE TABLE IF NOT EXISTS recipes (
@@ -38,7 +40,8 @@ export async function GET(req: Request) {
     const cuisines = await sql`SELECT DISTINCT cuisine FROM recipes ORDER BY cuisine`;
     return NextResponse.json({ recipes, cuisines: cuisines.map(c => c.cuisine) });
   } catch (e) {
-    return NextResponse.json({ recipes: [], cuisines: [], error: String(e) });
+    console.error("[cookbook GET]", e);
+    return NextResponse.json({ recipes: [], cuisines: [], error: String(e) }, { status: 500 });
   }
 }
 
@@ -83,6 +86,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
+    console.error("[cookbook POST]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

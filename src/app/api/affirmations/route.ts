@@ -1,19 +1,32 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
+async function ensureTables() {
+  const sql = getDb();
+  await sql`CREATE TABLE IF NOT EXISTS affirmations (
+    id SERIAL PRIMARY KEY,
+    text TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`;
+}
+
 export async function GET() {
   try {
     const sql = getDb();
-    const affirmations = await sql`SELECT text FROM affirmations WHERE is_active = TRUE` as {text: string}[];
+    await ensureTables();
+    const affirmations = await sql`SELECT text FROM affirmations WHERE is_active = TRUE` as { text: string }[];
     if (affirmations.length === 0) {
       return NextResponse.json({ daily: null, all: [] });
     }
-    // Pick one deterministically based on day of year
     const now = new Date();
     const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
     const idx = dayOfYear % affirmations.length;
     return NextResponse.json({ daily: affirmations[idx].text, all: affirmations.map(a => a.text) });
-  } catch {
+  } catch (e) {
+    console.error("[affirmations GET]", e);
     const fallback = [
       "I am magnetic, brilliant, and completely unstoppable.",
       "I am in my boss era and nothing can stop my glow up.",
@@ -29,10 +42,12 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const sql = getDb();
+    await ensureTables();
     const { text } = await req.json();
     const [aff] = await sql`INSERT INTO affirmations (text) VALUES (${text}) RETURNING *`;
     return NextResponse.json({ affirmation: aff });
   } catch (e) {
+    console.error("[affirmations POST]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

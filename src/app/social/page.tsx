@@ -46,7 +46,7 @@ export default function SocialPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/social");
+      const res = await fetch("/api/social", { cache: "no-store" });
       const data = await res.json();
       setEvents(data.events || []);
       setPlans(data.plans || []);

@@ -51,7 +51,7 @@ export default function SummerPlanPage() {
 
   const fetchTasks = useCallback(async () => {
     try {
-      const res = await fetch("/api/summer-tasks");
+      const res = await fetch("/api/summer-tasks", { cache: "no-store" });
       const data = await res.json();
       setTasks(data.tasks || []);
       setSeeded((data.tasks || []).length > 0);

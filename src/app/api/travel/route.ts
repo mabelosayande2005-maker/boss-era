@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
+const norm = (d: unknown) =>
+  d == null ? null : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+
 async function ensureTables() {
   const sql = getDb();
   await sql`CREATE TABLE IF NOT EXISTS travel_trips (
@@ -28,6 +33,10 @@ async function ensureTables() {
   )`;
 }
 
+function normTrip(t: Record<string, unknown>) {
+  return { ...t, start_date: norm(t.start_date), end_date: norm(t.end_date) };
+}
+
 export async function GET() {
   try {
     const sql = getDb();
@@ -39,9 +48,10 @@ export async function GET() {
       planned: trips.filter(t => t.status === "planned").length,
       wishlist: trips.filter(t => t.status === "wishlist").length,
     };
-    return NextResponse.json({ trips, bucket, stats });
+    return NextResponse.json({ trips: trips.map(t => normTrip(t as Record<string, unknown>)), bucket, stats });
   } catch (e) {
-    return NextResponse.json({ trips: [], bucket: [], stats: {}, error: String(e) });
+    console.error("[travel GET]", e);
+    return NextResponse.json({ trips: [], bucket: [], stats: {}, error: String(e) }, { status: 500 });
   }
 }
 
@@ -59,7 +69,7 @@ export async function POST(req: Request) {
         VALUES (${destination}, ${country || null}, ${emoji || "✈️"}, ${status || "wishlist"}, ${startDate || null}, ${endDate || null}, ${budgetTarget || null}, ${accommodation || null}, ${notes || null})
         RETURNING *
       `;
-      return NextResponse.json({ trip });
+      return NextResponse.json({ trip: normTrip(trip as Record<string, unknown>) });
     }
 
     if (action === "update-trip") {
@@ -68,7 +78,7 @@ export async function POST(req: Request) {
         UPDATE travel_trips SET status=${status}, budget_spent=${budgetSpent || 0}, highlights=${highlights || null}, notes=${notes || null}
         WHERE id=${id} RETURNING *
       `;
-      return NextResponse.json({ trip });
+      return NextResponse.json({ trip: normTrip(trip as Record<string, unknown>) });
     }
 
     if (action === "delete-trip") {
@@ -97,6 +107,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
+    console.error("[travel POST]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

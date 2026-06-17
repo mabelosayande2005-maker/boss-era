@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
+const norm = (d: unknown) =>
+  d == null ? null : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+
 async function ensureTables() {
   const sql = getDb();
   await sql`CREATE TABLE IF NOT EXISTS learning_books (
@@ -30,6 +35,10 @@ async function ensureTables() {
   )`;
 }
 
+function normBook(b: Record<string, unknown>) {
+  return { ...b, date_started: norm(b.date_started), date_finished: norm(b.date_finished) };
+}
+
 export async function GET() {
   try {
     const sql = getDb();
@@ -43,9 +52,10 @@ export async function GET() {
       coursesCompleted: courses.filter(c => c.status === "completed").length,
       coursesActive: courses.filter(c => c.status === "in_progress").length,
     };
-    return NextResponse.json({ books, courses, stats });
+    return NextResponse.json({ books: books.map(b => normBook(b as Record<string, unknown>)), courses, stats });
   } catch (e) {
-    return NextResponse.json({ books: [], courses: [], stats: {}, error: String(e) });
+    console.error("[learning GET]", e);
+    return NextResponse.json({ books: [], courses: [], stats: {}, error: String(e) }, { status: 500 });
   }
 }
 
@@ -63,7 +73,7 @@ export async function POST(req: Request) {
         VALUES (${title}, ${author || null}, ${genre || "Non-fiction"}, ${status || "want"}, ${coverEmoji || "📖"}, ${notes || null})
         RETURNING *
       `;
-      return NextResponse.json({ book });
+      return NextResponse.json({ book: normBook(book as Record<string, unknown>) });
     }
 
     if (action === "update-book") {
@@ -73,7 +83,7 @@ export async function POST(req: Request) {
           date_started=${dateStarted || null}, date_finished=${dateFinished || null}
         WHERE id=${id} RETURNING *
       `;
-      return NextResponse.json({ book });
+      return NextResponse.json({ book: normBook(book as Record<string, unknown>) });
     }
 
     if (action === "delete-book") {
@@ -108,6 +118,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
+    console.error("[learning POST]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

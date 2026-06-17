@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
+const norm = (d: unknown) =>
+  d == null ? null : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+
 async function ensureTables() {
   const sql = getDb();
   await sql`
@@ -34,30 +39,35 @@ async function ensureTables() {
   `;
 }
 
+function normItem(i: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...i,
+    date_purchased: norm(i.date_purchased),
+    date_listed: norm(i.date_listed),
+    date_sold: norm(i.date_sold),
+  };
+}
+
 export async function GET() {
   try {
     const sql = getDb();
     await ensureTables();
 
-    const items = await sql`
-      SELECT * FROM vinted_items ORDER BY created_at DESC
-    `;
-    const wishlist = await sql`
-      SELECT * FROM vinted_wishlist ORDER BY found ASC, created_at DESC
-    `;
+    const items = await sql`SELECT * FROM vinted_items ORDER BY created_at DESC`;
+    const wishlist = await sql`SELECT * FROM vinted_wishlist ORDER BY found ASC, created_at DESC`;
 
-    // Aggregate stats
-    const sold    = items.filter((i) => i.status === "sold");
-    const listed  = items.filter((i) => i.status === "listed");
-    const sourced = items.filter((i) => i.status === "sourced");
+    const normItems = items.map(i => normItem(i as Record<string, unknown>));
+    const sold    = normItems.filter(i => i.status === "sold");
+    const listed  = normItems.filter(i => i.status === "listed");
+    const sourced = normItems.filter(i => i.status === "sourced");
 
-    const totalProfit   = sold.reduce((s, i) => s + (parseFloat(i.sale_price  ?? 0) - parseFloat(i.purchase_price ?? 0)), 0);
-    const totalRevenue  = sold.reduce((s, i) => s + parseFloat(i.sale_price   ?? 0), 0);
-    const totalInvested = [...listed, ...sourced].reduce((s, i) => s + parseFloat(i.purchase_price ?? 0), 0);
-    const potentialProfit = listed.reduce((s, i) => s + (parseFloat(i.listing_price ?? 0) - parseFloat(i.purchase_price ?? 0)), 0);
+    const totalProfit   = sold.reduce((s, i) => s + (parseFloat(String(i.sale_price  ?? 0)) - parseFloat(String(i.purchase_price ?? 0))), 0);
+    const totalRevenue  = sold.reduce((s, i) => s + parseFloat(String(i.sale_price   ?? 0)), 0);
+    const totalInvested = [...listed, ...sourced].reduce((s, i) => s + parseFloat(String(i.purchase_price ?? 0)), 0);
+    const potentialProfit = listed.reduce((s, i) => s + (parseFloat(String(i.listing_price ?? 0)) - parseFloat(String(i.purchase_price ?? 0))), 0);
 
     return NextResponse.json({
-      items,
+      items: normItems,
       wishlist,
       stats: {
         totalProfit,
@@ -70,7 +80,8 @@ export async function GET() {
       },
     });
   } catch (e) {
-    return NextResponse.json({ items: [], wishlist: [], stats: {}, error: String(e) });
+    console.error("[vinted GET]", e);
+    return NextResponse.json({ items: [], wishlist: [], stats: {}, error: String(e) }, { status: 500 });
   }
 }
 
@@ -82,7 +93,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { action, id } = body;
 
-    // ── Inventory actions ───────────────────────────────────────────────
     if (action === "add-item") {
       const { name, category, brand, purchasePrice, listingPrice, datePurchased, dateListed, status, photoUrl, notes } = body;
       const [item] = await sql`
@@ -94,7 +104,7 @@ export async function POST(req: Request) {
            ${status || "sourced"}, ${photoUrl || null}, ${notes || null})
         RETURNING *
       `;
-      return NextResponse.json({ item });
+      return NextResponse.json({ item: normItem(item as Record<string, unknown>) });
     }
 
     if (action === "update-item") {
@@ -107,7 +117,7 @@ export async function POST(req: Request) {
           status = ${status || "sourced"}, photo_url = ${photoUrl || null}, notes = ${notes || null}
         WHERE id = ${id} RETURNING *
       `;
-      return NextResponse.json({ item });
+      return NextResponse.json({ item: normItem(item as Record<string, unknown>) });
     }
 
     if (action === "mark-sold") {
@@ -117,7 +127,7 @@ export async function POST(req: Request) {
           status = 'sold', sale_price = ${salePrice}, date_sold = ${dateSold || null}
         WHERE id = ${id} RETURNING *
       `;
-      return NextResponse.json({ item });
+      return NextResponse.json({ item: normItem(item as Record<string, unknown>) });
     }
 
     if (action === "delete-item") {
@@ -125,7 +135,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ deleted: true });
     }
 
-    // ── Wishlist actions ────────────────────────────────────────────────
     if (action === "add-wish") {
       const { itemName, brand, maxPrice, notes } = body;
       const [wish] = await sql`
@@ -151,6 +160,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
+    console.error("[vinted POST]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

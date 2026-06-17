@@ -1,27 +1,39 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
+const norm = (d: unknown) =>
+  d == null ? null : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+
+async function ensureTables() {
+  const sql = getDb();
+  await sql`
+    CREATE TABLE IF NOT EXISTS content_items (
+      id SERIAL PRIMARY KEY,
+      brand TEXT NOT NULL,
+      title TEXT NOT NULL,
+      platform TEXT,
+      scheduled_date DATE,
+      status TEXT DEFAULT 'idea',
+      notes TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+}
+
+function normItem(i: Record<string, unknown>) {
+  return { ...i, scheduled_date: norm(i.scheduled_date) };
+}
+
 export async function GET(req: Request) {
   try {
     const sql = getDb();
+    await ensureTables();
     const { searchParams } = new URL(req.url);
-    const weekStart = searchParams.get("weekStart"); // YYYY-MM-DD
+    const weekStart = searchParams.get("weekStart");
 
-    // Ensure table exists
-    await sql`
-      CREATE TABLE IF NOT EXISTS content_items (
-        id SERIAL PRIMARY KEY,
-        brand TEXT NOT NULL,
-        title TEXT NOT NULL,
-        platform TEXT,
-        scheduled_date DATE,
-        status TEXT DEFAULT 'idea',
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT NOW()
-      )
-    `;
-
-    let scheduled: Record<string, unknown>[] = [];
+    let scheduled: Record<string, unknown>[];
     if (weekStart) {
       scheduled = await sql`
         SELECT * FROM content_items
@@ -43,15 +55,20 @@ export async function GET(req: Request) {
       ORDER BY created_at DESC
     ` as Record<string, unknown>[];
 
-    return NextResponse.json({ scheduled, ideas });
+    return NextResponse.json({
+      scheduled: scheduled.map(normItem),
+      ideas: ideas.map(normItem),
+    });
   } catch (e) {
-    return NextResponse.json({ scheduled: [], ideas: [], error: String(e) });
+    console.error("[content GET]", e);
+    return NextResponse.json({ scheduled: [], ideas: [], error: String(e) }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
   try {
     const sql = getDb();
+    await ensureTables();
     const body = await req.json();
     const { action, id, brand, title, platform, scheduledDate, status, notes } = body;
 
@@ -68,7 +85,7 @@ export async function POST(req: Request) {
         )
         RETURNING *
       `;
-      return NextResponse.json({ item });
+      return NextResponse.json({ item: normItem(item as Record<string, unknown>) });
     }
 
     if (action === "update") {
@@ -83,26 +100,24 @@ export async function POST(req: Request) {
         WHERE id = ${id}
         RETURNING *
       `;
-      return NextResponse.json({ item });
+      return NextResponse.json({ item: normItem(item as Record<string, unknown>) });
     }
 
     if (action === "status") {
-      // Quick status bump
       const [item] = await sql`
         UPDATE content_items SET status = ${status} WHERE id = ${id} RETURNING *
       `;
-      return NextResponse.json({ item });
+      return NextResponse.json({ item: normItem(item as Record<string, unknown>) });
     }
 
     if (action === "schedule") {
-      // Promote an idea to the calendar by assigning a date
       const [item] = await sql`
         UPDATE content_items
         SET scheduled_date = ${scheduledDate}, status = ${status || "idea"}
         WHERE id = ${id}
         RETURNING *
       `;
-      return NextResponse.json({ item });
+      return NextResponse.json({ item: normItem(item as Record<string, unknown>) });
     }
 
     if (action === "delete") {
@@ -112,6 +127,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
+    console.error("[content POST]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

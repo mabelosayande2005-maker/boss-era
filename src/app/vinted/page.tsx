@@ -145,7 +145,7 @@ export default function VintedPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res  = await fetch("/api/vinted");
+      const res  = await fetch("/api/vinted", { cache: "no-store" });
       const data = await res.json();
       setItems(data.items    ?? []);
       setWishlist(data.wishlist ?? []);

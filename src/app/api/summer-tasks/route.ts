@@ -1,36 +1,42 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
+async function ensureTables() {
+  const sql = getDb();
+  await sql`
+    CREATE TABLE IF NOT EXISTS summer_tasks (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      stream TEXT NOT NULL DEFAULT 'Admin',
+      completed BOOLEAN DEFAULT FALSE,
+      completed_at TIMESTAMP,
+      notes TEXT,
+      sort_order INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+}
+
 export async function GET() {
   try {
     const sql = getDb();
-
-    await sql`
-      CREATE TABLE IF NOT EXISTS summer_tasks (
-        id SERIAL PRIMARY KEY,
-        title TEXT NOT NULL,
-        stream TEXT NOT NULL DEFAULT 'Admin',
-        completed BOOLEAN DEFAULT FALSE,
-        completed_at TIMESTAMP,
-        notes TEXT,
-        sort_order INTEGER DEFAULT 0,
-        created_at TIMESTAMP DEFAULT NOW()
-      )
-    `;
-
+    await ensureTables();
     const tasks = await sql`
       SELECT * FROM summer_tasks ORDER BY stream ASC, sort_order ASC, created_at ASC
     `;
-
     return NextResponse.json({ tasks });
   } catch (e) {
-    return NextResponse.json({ tasks: [], error: String(e) });
+    console.error("[summer-tasks GET]", e);
+    return NextResponse.json({ tasks: [], error: String(e) }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
   try {
     const sql = getDb();
+    await ensureTables();
     const body = await req.json();
     const { action, id, title, stream, notes } = body;
 
@@ -72,28 +78,23 @@ export async function POST(req: Request) {
 
     if (action === "seed") {
       const seeds = [
-        // Personal TikTok
         { title: "Post 3× a week consistently", stream: "Personal TikTok", order: 1 },
         { title: "Film summer aesthetic content", stream: "Personal TikTok", order: 2 },
         { title: "Reach 1k followers milestone", stream: "Personal TikTok", order: 3 },
         { title: "Set up TikTok Shop affiliate", stream: "Personal TikTok", order: 4 },
         { title: "Film first brand deal content", stream: "Personal TikTok", order: 5 },
-        // StudyGlow
         { title: "Post 1× per week StudyGlow content", stream: "StudyGlow", order: 1 },
         { title: "Plan back-to-uni content series", stream: "StudyGlow", order: 2 },
         { title: "Film 'my summer study routine' video", stream: "StudyGlow", order: 3 },
         { title: "Reach 5k StudyGlow followers", stream: "StudyGlow", order: 4 },
-        // Vinted
         { title: "List everything from current wardrobe", stream: "Vinted", order: 1 },
         { title: "First Fleek haul and flip", stream: "Vinted", order: 2 },
         { title: "Hit £200 Vinted profit", stream: "Vinted", order: 3 },
         { title: "Set up Vinted bundle offers", stream: "Vinted", order: 4 },
-        // Skills
         { title: "Complete AI course (current module)", stream: "Skills", order: 1 },
         { title: "Finish current sewing project", stream: "Skills", order: 2 },
         { title: "Italian — reach B1 level", stream: "Skills", order: 3 },
         { title: "Dance class every week", stream: "Skills", order: 4 },
-        // Admin
         { title: "Update CV for September placements", stream: "Admin", order: 1 },
         { title: "Research target placement companies", stream: "Admin", order: 2 },
         { title: "Set up Sunday planning ritual", stream: "Admin", order: 3 },
@@ -112,6 +113,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
+    console.error("[summer-tasks POST]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

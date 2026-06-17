@@ -49,7 +49,7 @@ export default function MusicPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/music");
+      const res = await fetch("/api/music", { cache: "no-store" });
       const data = await res.json();
       setEntries(data.entries || []);
       setPlaylists(data.playlists || []);

@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
+const norm = (d: unknown) =>
+  d == null ? null : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+
 async function ensureTables() {
   const sql = getDb();
   await sql`
@@ -44,6 +49,14 @@ async function ensureTables() {
   `;
 }
 
+function normApp(a: Record<string, unknown>): Record<string, unknown> {
+  return { ...a, deadline: norm(a.deadline), date_applied: norm(a.date_applied) };
+}
+
+function normContact(c: Record<string, unknown>) {
+  return { ...c, date_met: norm(c.date_met), follow_up_date: norm(c.follow_up_date) };
+}
+
 export async function GET() {
   try {
     const sql = getDb();
@@ -74,18 +87,25 @@ export async function GET() {
       SELECT * FROM networking ORDER BY follow_up_date ASC NULLS LAST, created_at DESC
     `;
 
+    const normApps = applications.map(a => normApp(a as Record<string, unknown>));
     const stats = {
-      totalApps:    applications.length,
-      activeApps:   applications.filter((a) => !["rejected","withdrawn"].includes(a.status as string)).length,
-      interviews:   applications.filter((a) => a.status === "interview").length,
-      offers:       applications.filter((a) => a.status === "offer").length,
-      dreamBrands:  brands.filter((b) => b.status === "dream").length,
-      activeBrands: brands.filter((b) => ["in_talks","active"].includes(b.status as string)).length,
+      totalApps:    normApps.length,
+      activeApps:   normApps.filter(a => !["rejected","withdrawn"].includes(a.status as string)).length,
+      interviews:   normApps.filter(a => a.status === "interview").length,
+      offers:       normApps.filter(a => a.status === "offer").length,
+      dreamBrands:  brands.filter(b => b.status === "dream").length,
+      activeBrands: brands.filter(b => ["in_talks","active"].includes(b.status as string)).length,
     };
 
-    return NextResponse.json({ applications, brands, contacts, stats });
+    return NextResponse.json({
+      applications: normApps,
+      brands,
+      contacts: contacts.map(c => normContact(c as Record<string, unknown>)),
+      stats,
+    });
   } catch (e) {
-    return NextResponse.json({ applications: [], brands: [], contacts: [], stats: {}, error: String(e) });
+    console.error("[career GET]", e);
+    return NextResponse.json({ applications: [], brands: [], contacts: [], stats: {}, error: String(e) }, { status: 500 });
   }
 }
 
@@ -96,7 +116,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { action, id } = body;
 
-    // ── Applications ────────────────────────────────────────────────────────────
     if (action === "add-app") {
       const { role, company, category, status, deadline, dateApplied, link, notes } = body;
       const [app] = await sql`
@@ -105,7 +124,7 @@ export async function POST(req: Request) {
                 ${deadline || null}, ${dateApplied || null}, ${link || null}, ${notes || null})
         RETURNING *
       `;
-      return NextResponse.json({ app });
+      return NextResponse.json({ app: normApp(app as Record<string, unknown>) });
     }
 
     if (action === "update-app") {
@@ -117,14 +136,14 @@ export async function POST(req: Request) {
           date_applied = ${dateApplied || null}, link = ${link || null}, notes = ${notes || null}
         WHERE id = ${id} RETURNING *
       `;
-      return NextResponse.json({ app });
+      return NextResponse.json({ app: normApp(app as Record<string, unknown>) });
     }
 
     if (action === "status-app") {
       const [app] = await sql`
         UPDATE job_applications SET status = ${body.status} WHERE id = ${id} RETURNING *
       `;
-      return NextResponse.json({ app });
+      return NextResponse.json({ app: normApp(app as Record<string, unknown>) });
     }
 
     if (action === "delete-app") {
@@ -132,7 +151,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ deleted: true });
     }
 
-    // ── Brand wishlist ──────────────────────────────────────────────────────────
     if (action === "add-brand") {
       const { brand, platform, category, status, email, notes } = body;
       const [b] = await sql`
@@ -160,7 +178,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ deleted: true });
     }
 
-    // ── Networking ──────────────────────────────────────────────────────────────
     if (action === "add-contact") {
       const { name, role, company, howMet, dateMet, followUpDate, notes } = body;
       const [c] = await sql`
@@ -169,7 +186,7 @@ export async function POST(req: Request) {
                 ${dateMet || null}, ${followUpDate || null}, ${notes || null})
         RETURNING *
       `;
-      return NextResponse.json({ contact: c });
+      return NextResponse.json({ contact: normContact(c as Record<string, unknown>) });
     }
 
     if (action === "update-contact") {
@@ -181,7 +198,7 @@ export async function POST(req: Request) {
           follow_up_date = ${followUpDate || null}, notes = ${notes || null}
         WHERE id = ${id} RETURNING *
       `;
-      return NextResponse.json({ contact: c });
+      return NextResponse.json({ contact: normContact(c as Record<string, unknown>) });
     }
 
     if (action === "delete-contact") {
@@ -191,6 +208,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
+    console.error("[career POST]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

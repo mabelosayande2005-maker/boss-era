@@ -44,7 +44,7 @@ export default function LearningPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/learning");
+      const res = await fetch("/api/learning", { cache: "no-store" });
       const data = await res.json();
       setBooks(data.books || []);
       setCourses(data.courses || []);

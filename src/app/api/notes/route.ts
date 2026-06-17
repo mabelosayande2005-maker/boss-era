@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 async function ensureTables() {
   const sql = getDb();
   await sql`CREATE TABLE IF NOT EXISTS notes (
@@ -30,7 +32,8 @@ export async function GET(req: Request) {
     const allTags = await sql`SELECT DISTINCT UNNEST(STRING_TO_ARRAY(tags, ',')) as tag FROM notes WHERE tags IS NOT NULL ORDER BY tag`;
     return NextResponse.json({ notes, tags: allTags.map(t => (t.tag as string).trim()).filter(Boolean) });
   } catch (e) {
-    return NextResponse.json({ notes: [], tags: [], error: String(e) });
+    console.error("[notes GET]", e);
+    return NextResponse.json({ notes: [], tags: [], error: String(e) }, { status: 500 });
   }
 }
 
@@ -73,6 +76,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
+    console.error("[notes POST]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

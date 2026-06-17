@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
+const norm = (d: unknown) =>
+  d == null ? null : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+
 async function ensureTables() {
   const sql = getDb();
   await sql`CREATE TABLE IF NOT EXISTS wellbeing_logs (
@@ -16,6 +21,10 @@ async function ensureTables() {
   )`;
 }
 
+function normLog(l: Record<string, unknown>) {
+  return { ...l, log_date: norm(l.log_date) };
+}
+
 export async function GET(req: Request) {
   try {
     const sql = getDb();
@@ -29,9 +38,13 @@ export async function GET(req: Request) {
     `;
     const today = new Date().toISOString().split("T")[0];
     const [todayLog] = await sql`SELECT * FROM wellbeing_logs WHERE log_date = ${today}`;
-    return NextResponse.json({ logs, todayLog: todayLog || null });
+    return NextResponse.json({
+      logs: logs.map(normLog),
+      todayLog: todayLog ? normLog(todayLog as Record<string, unknown>) : null,
+    });
   } catch (e) {
-    return NextResponse.json({ logs: [], todayLog: null, error: String(e) });
+    console.error("[wellbeing GET]", e);
+    return NextResponse.json({ logs: [], todayLog: null, error: String(e) }, { status: 500 });
   }
 }
 
@@ -57,7 +70,7 @@ export async function POST(req: Request) {
           journal_entry = EXCLUDED.journal_entry
         RETURNING *
       `;
-      return NextResponse.json({ log });
+      return NextResponse.json({ log: normLog(log as Record<string, unknown>) });
     }
 
     if (action === "water") {
@@ -69,11 +82,12 @@ export async function POST(req: Request) {
         ON CONFLICT (log_date) DO UPDATE SET water_glasses = ${glasses}
         RETURNING *
       `;
-      return NextResponse.json({ log });
+      return NextResponse.json({ log: normLog(log as Record<string, unknown>) });
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
+    console.error("[wellbeing POST]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

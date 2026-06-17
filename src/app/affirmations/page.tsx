@@ -32,7 +32,7 @@ export default function AffirmationsPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/affirmations");
+      const res = await fetch("/api/affirmations", { cache: "no-store" });
       const data = await res.json();
       setAll(data.all || []);
       setDaily(data.daily || "");

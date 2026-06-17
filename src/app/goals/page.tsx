@@ -143,7 +143,7 @@ export default function GoalsPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/goals");
+      const res = await fetch("/api/goals", { cache: "no-store" });
       const data = await res.json();
       setGoals(data.goals || []);
     } catch {/* */}

@@ -96,7 +96,7 @@ export default function CookbookPage() {
     setLoading(true);
     try {
       const url = favOnly ? "/api/cookbook?fav=true" : cuisineFilter !== "All" ? `/api/cookbook?cuisine=${encodeURIComponent(cuisineFilter)}` : "/api/cookbook";
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: "no-store" });
       const data = await res.json();
       setRecipes(data.recipes || []);
       setCuisines(data.cuisines || []);

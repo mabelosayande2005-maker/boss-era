@@ -52,7 +52,7 @@ export default function FinancePage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/finance?month=${month}`);
+      const res = await fetch(`/api/finance?month=${month}`, { cache: "no-store" });
       const data = await res.json();
       setCategories(data.categories || []);
       setExpenses(data.expenses || []);
