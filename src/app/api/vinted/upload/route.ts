@@ -1,25 +1,26 @@
 import { NextResponse } from "next/server";
-import { put } from "@vercel/blob";
+import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 
-export async function POST(req: Request) {
-  // Gracefully disabled when Vercel Blob isn't configured
+export async function POST(request: Request): Promise<Response> {
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     return NextResponse.json(
-      { error: "Photo uploads require BLOB_READ_WRITE_TOKEN — add it in Vercel dashboard" },
+      { error: "BLOB_READ_WRITE_TOKEN not configured — create a Blob store in Vercel dashboard → Storage" },
       { status: 503 }
     );
   }
-
   try {
-    const form     = await req.formData();
-    const file     = form.get("file") as File | null;
-    if (!file) return NextResponse.json({ error: "No file" }, { status: 400 });
-
-    const filename = `vinted/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, "-")}`;
-    const blob     = await put(filename, file, { access: "public" });
-
-    return NextResponse.json({ url: blob.url });
+    const body = (await request.json()) as HandleUploadBody;
+    const jsonResponse = await handleUpload({
+      body,
+      request,
+      onBeforeGenerateToken: async () => ({
+        allowedContentTypes: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"],
+        maximumSizeInBytes: 10 * 1024 * 1024,
+      }),
+      onUploadCompleted: async () => {},
+    });
+    return NextResponse.json(jsonResponse);
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return NextResponse.json({ error: String(e) }, { status: 400 });
   }
 }

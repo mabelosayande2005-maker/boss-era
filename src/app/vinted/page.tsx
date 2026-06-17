@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { format, parseISO } from "date-fns";
 import { Plus, X, Check, Pencil, ShoppingBag, TrendingUp, Package, Star } from "lucide-react";
+import { upload } from "@vercel/blob/client";
 import { cn } from "@/lib/utils";
 
 // ── types ──────────────────────────────────────────────────────────────────────
@@ -126,8 +127,9 @@ export default function VintedPage() {
   const [fListDate,  setFListDate]  = useState("");
   const [fStatus,    setFStatus]    = useState<VintedItem["status"]>("sourced");
   const [fNotes,     setFNotes]     = useState("");
-  const [fPhotoUrl,  setFPhotoUrl]  = useState("");
-  const [uploading,  setUploading]  = useState(false);
+  const [fPhotoUrl,   setFPhotoUrl]   = useState("");
+  const [uploading,   setUploading]   = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // sold form
@@ -157,14 +159,19 @@ export default function VintedPage() {
   // ── photo upload ─────────────────────────────────────────────────────────────
   const uploadPhoto = async (file: File) => {
     setUploading(true);
+    setUploadError(null);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const res  = await fetch("/api/vinted/upload", { method: "POST", body: form });
-      const data = await res.json();
-      if (data.url) setFPhotoUrl(data.url);
-    } catch {}
-    setUploading(false);
+      const blob = await upload(
+        `vinted/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, "-")}`,
+        file,
+        { access: "public", handleUploadUrl: "/api/vinted/upload" }
+      );
+      setFPhotoUrl(blob.url);
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
   };
 
   // ── item form ────────────────────────────────────────────────────────────────
@@ -173,7 +180,7 @@ export default function VintedPage() {
     setFName(""); setFCategory("Other"); setFBrand("");
     setFBuyPrice(""); setFListPrice("");
     setFBuyDate(""); setFListDate("");
-    setFStatus("sourced"); setFNotes(""); setFPhotoUrl("");
+    setFStatus("sourced"); setFNotes(""); setFPhotoUrl(""); setUploadError(null);
     setShowItemForm(true);
   };
 
@@ -188,7 +195,7 @@ export default function VintedPage() {
     setFListDate(item.date_listed?.split("T")[0] ?? "");
     setFStatus(item.status);
     setFNotes(item.notes ?? "");
-    setFPhotoUrl(item.photo_url ?? "");
+    setFPhotoUrl(item.photo_url ?? ""); setUploadError(null);
     setShowItemForm(true);
   };
 
@@ -571,9 +578,9 @@ export default function VintedPage() {
                   <button className="block text-xs" style={{ color: "var(--text-soft)" }}
                     onClick={() => setFPhotoUrl("")}>Remove</button>
                 )}
-                <p className="text-xs mt-1" style={{ color: "var(--text-soft)" }}>
-                  Requires Vercel Blob storage
-                </p>
+                {uploadError && (
+                  <p className="text-xs mt-1" style={{ color: "var(--rose)" }}>{uploadError}</p>
+                )}
               </div>
             </div>
           </div>

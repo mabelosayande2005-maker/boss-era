@@ -15,7 +15,6 @@ const navItems = [
   { href: "/vinted", label: "Vinted", emoji: "🛍️" },
   { href: "/career", label: "Career", emoji: "💼" },
   { href: "/wellbeing", label: "Wellbeing", emoji: "🌸" },
-  { href: "/wardrobe", label: "Wardrobe", emoji: "👗" },
   { href: "/finance", label: "Finance", emoji: "📊" },
   { href: "/goals", label: "Goals", emoji: "🌟" },
   { href: "/learning", label: "Learning", emoji: "📚" },
