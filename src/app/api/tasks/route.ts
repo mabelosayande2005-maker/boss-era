@@ -16,10 +16,18 @@ async function ensureTables() {
     is_today BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT NOW()
   )`;
-  // task_date tracks which day's list this task belongs to (separate from due_date deadline)
-  await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_date DATE DEFAULT CURRENT_DATE`;
-  // Backfill legacy rows that have no task_date yet
+  // task_date tracks which day's list this task belongs to (separate from due_date deadline).
+  // Add without DEFAULT so existing rows get NULL rather than today's date.
+  await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_date DATE`;
+  // Backfill rows with no task_date (first deploy after column add).
   await sql`UPDATE tasks SET task_date = created_at::date WHERE task_date IS NULL`;
+  // Fix rows incorrectly stamped with CURRENT_DATE by a prior migration that used DEFAULT CURRENT_DATE.
+  await sql`UPDATE tasks SET task_date = created_at::date WHERE task_date = CURRENT_DATE AND created_at::date < CURRENT_DATE`;
+  // Ensure future inserts default to today.
+  await sql`ALTER TABLE tasks ALTER COLUMN task_date SET DEFAULT CURRENT_DATE`;
+  // Keep is_today accurate: old completed tasks should not carry over via the is_today flag
+  // (guards against the legacy GET query on older deploys that used is_today instead of task_date).
+  await sql`UPDATE tasks SET is_today = FALSE WHERE is_today = TRUE AND completed = TRUE AND created_at::date < CURRENT_DATE`;
 }
 
 // Neon returns DATE/TIMESTAMP columns as JS Date objects server-side.

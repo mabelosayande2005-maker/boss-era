@@ -396,8 +396,8 @@ export default function HabitsPage() {
                           )}
                         </div>
                       </div>
-                      {/* Edit/delete — show on row hover */}
-                      <div className="flex gap-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                      {/* Edit/delete — always visible on touch, full opacity on hover */}
+                      <div className="flex gap-1 ml-1 opacity-40 group-hover:opacity-100 transition-opacity flex-shrink-0">
                         <button
                           onClick={() => openEdit(habit)}
                           className="w-5 h-5 rounded flex items-center justify-center"

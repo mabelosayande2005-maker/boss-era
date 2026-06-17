@@ -290,7 +290,7 @@ export default function HomePage() {
                 )}
                 <button
                   onClick={() => deleteTask(task.id)}
-                  className="w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="w-5 h-5 rounded flex items-center justify-center opacity-40 hover:opacity-100 transition-opacity"
                   style={{ color: "var(--text-soft)" }}
                 >
                   <X size={11} />
