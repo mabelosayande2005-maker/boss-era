@@ -20,6 +20,8 @@ async function ensureTables() {
     created_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(habit_id, completed_date)
   )`;
+  // days: comma-separated JS day indices (0=Sun … 6=Sat), NULL = every day
+  await sql`ALTER TABLE habits ADD COLUMN IF NOT EXISTS days TEXT DEFAULT NULL`;
 }
 
 export async function GET(req: Request) {
@@ -87,18 +89,20 @@ export async function POST(req: Request) {
     }
 
     if (action === "add") {
+      const { days } = body;
       const [habit] = await sql`
-        INSERT INTO habits (name, emoji, target_per_week, color)
-        VALUES (${name}, ${emoji || "⭐"}, ${targetPerWeek ?? 1}, ${color || "#b8d4c8"})
+        INSERT INTO habits (name, emoji, target_per_week, color, days)
+        VALUES (${name}, ${emoji || "⭐"}, ${targetPerWeek ?? 1}, ${color || "#b8d4c8"}, ${days || null})
         RETURNING *
       `;
       return NextResponse.json({ habit });
     }
 
     if (action === "edit") {
+      const { days } = body;
       const [habit] = await sql`
         UPDATE habits
-        SET name = ${name}, emoji = ${emoji}, target_per_week = ${targetPerWeek}, color = ${color}
+        SET name = ${name}, emoji = ${emoji}, target_per_week = ${targetPerWeek}, color = ${color}, days = ${days || null}
         WHERE id = ${id} RETURNING *
       `;
       return NextResponse.json({ habit });

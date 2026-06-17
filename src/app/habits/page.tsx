@@ -18,7 +18,30 @@ type Habit = {
   emoji: string;
   target_per_week: number;
   color: string;
+  days: string | null; // comma-separated JS day indices (0=Sun…6=Sat), null = every day
 };
+
+// ordered Mon→Sun for display (matches the weekly grid)
+const WEEK_DAYS = [
+  { idx: 1, label: "Mon" },
+  { idx: 2, label: "Tue" },
+  { idx: 3, label: "Wed" },
+  { idx: 4, label: "Thu" },
+  { idx: 5, label: "Fri" },
+  { idx: 6, label: "Sat" },
+  { idx: 0, label: "Sun" },
+];
+
+function parseDays(days: string | null | undefined): number[] {
+  if (!days) return [];
+  return days.split(",").map(Number).filter((n) => !isNaN(n));
+}
+
+function habitAppliesToDay(habit: Habit, day: Date): boolean {
+  const assigned = parseDays(habit.days);
+  if (assigned.length === 0) return true; // no restriction = every day
+  return assigned.includes(day.getDay());
+}
 
 type Completion = {
   habit_id: number;
@@ -59,6 +82,7 @@ export default function HabitsPage() {
   const [fEmoji,  setFEmoji]  = useState("⭐");
   const [fColor,  setFColor]  = useState("#b8d4c8");
   const [fTarget, setFTarget] = useState(1);
+  const [fDays,   setFDays]   = useState<number[]>([]); // [] = every day
 
   const weekStart    = weekMonday(weekAnchor);
   const weekStartISO = toISO(weekStart); // stable string — safe as useCallback dep
@@ -104,23 +128,24 @@ export default function HabitsPage() {
         String(c.completed_date).startsWith(toISO(day))
     );
 
-  const doneCountThisWeek = (habitId: number) =>
-    days.filter((d) => isDone(habitId, d)).length;
+  const doneCountThisWeek = (habit: Habit) =>
+    days.filter((d) => habitAppliesToDay(habit, d) && isDone(habit.id, d)).length;
 
   // weekly score = fraction of habits that hit their target
   const habitsOnTarget = habits.filter(
-    (h) => doneCountThisWeek(h.id) >= h.target_per_week
+    (h) => doneCountThisWeek(h) >= h.target_per_week
   ).length;
   const weeklyScore =
     habits.length > 0 ? Math.round((habitsOnTarget / habits.length) * 100) : 0;
 
   // total completions this week
-  const totalDone  = habits.reduce((s, h) => s + doneCountThisWeek(h.id), 0);
+  const totalDone   = habits.reduce((s, h) => s + doneCountThisWeek(h), 0);
   const totalNeeded = habits.reduce((s, h) => s + h.target_per_week, 0);
 
   // ── actions ──────────────────────────────────────────────────────────────
-  const toggle = async (habitId: number, day: Date) => {
+  const toggle = async (habitId: number, day: Date, habit: Habit) => {
     if (isFuture(addDays(day, 1)) && !isToday(day)) return; // no future
+    if (!habitAppliesToDay(habit, day)) return; // not scheduled this day
     const date      = toISO(day);
     const wasCompleted = isDone(habitId, day);
 
@@ -142,25 +167,32 @@ export default function HabitsPage() {
 
   const openAdd = () => {
     setEditHabit(null);
-    setFName(""); setFEmoji("⭐"); setFColor("#b8d4c8"); setFTarget(1);
+    setFName(""); setFEmoji("⭐"); setFColor("#b8d4c8"); setFTarget(1); setFDays([]);
     setShowForm(true);
   };
 
   const openEdit = (h: Habit) => {
     setEditHabit(h);
     setFName(h.name); setFEmoji(h.emoji); setFColor(h.color); setFTarget(h.target_per_week);
+    setFDays(parseDays(h.days));
     setShowForm(true);
   };
 
+  const toggleFormDay = (idx: number) =>
+    setFDays((prev) =>
+      prev.includes(idx) ? prev.filter((d) => d !== idx) : [...prev, idx]
+    );
+
   const saveHabit = async () => {
     if (!fName.trim()) return;
+    const days = fDays.length > 0 ? fDays.sort((a, b) => a - b).join(",") : null;
     await fetch("/api/habits", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify(
         editHabit
-          ? { action: "edit", id: editHabit.id, name: fName.trim(), emoji: fEmoji, color: fColor, targetPerWeek: fTarget }
-          : { action: "add",  name: fName.trim(), emoji: fEmoji, color: fColor, targetPerWeek: fTarget }
+          ? { action: "edit", id: editHabit.id, name: fName.trim(), emoji: fEmoji, color: fColor, targetPerWeek: fTarget, days }
+          : { action: "add",  name: fName.trim(), emoji: fEmoji, color: fColor, targetPerWeek: fTarget, days }
       ),
     });
     setShowForm(false);
@@ -365,7 +397,7 @@ export default function HabitsPage() {
           {/* Habit rows */}
           <div className="divide-y" style={{ borderColor: "rgba(200,184,224,0.12)" }}>
             {habits.map((habit) => {
-                const count   = doneCountThisWeek(habit.id);
+                const count   = doneCountThisWeek(habit);
                 const metGoal = count >= habit.target_per_week;
 
                 return (
@@ -419,13 +451,26 @@ export default function HabitsPage() {
 
                     {/* Day cells */}
                     {days.map((day) => {
-                      const done   = isDone(habit.id, day);
-                      const future = isFuture(day) && !isToday(day);
+                      const done    = isDone(habit.id, day);
+                      const future  = isFuture(day) && !isToday(day);
+                      const applies = habitAppliesToDay(habit, day);
+
+                      if (!applies) {
+                        return (
+                          <div
+                            key={toISO(day)}
+                            className="w-8 h-8 rounded-full mx-auto flex items-center justify-center"
+                            style={{ background: "transparent" }}
+                          >
+                            <span style={{ color: "rgba(200,184,224,0.35)", fontSize: "14px", lineHeight: 1 }}>–</span>
+                          </div>
+                        );
+                      }
 
                       return (
                         <button
                           key={toISO(day)}
-                          onClick={() => !future && toggle(habit.id, day)}
+                          onClick={() => !future && toggle(habit.id, day, habit)}
                           disabled={future}
                           className="w-8 h-8 rounded-full mx-auto flex items-center justify-center transition-all"
                           style={{
@@ -482,7 +527,7 @@ export default function HabitsPage() {
       {habits.length > 0 && !loading && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {habits.map((habit) => {
-            const count   = doneCountThisWeek(habit.id);
+            const count   = doneCountThisWeek(habit);
             const target  = habit.target_per_week;
             const pct     = Math.min(100, (count / target) * 100);
             const met     = count >= target;
@@ -610,6 +655,42 @@ export default function HabitsPage() {
             </div>
           </div>
 
+          {/* Days of week */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-medium" style={{ color: "var(--text-soft)" }}>
+                Days
+              </label>
+              <span className="text-xs" style={{ color: "var(--text-soft)" }}>
+                {fDays.length === 0 ? "Every day" : `${fDays.length} day${fDays.length !== 1 ? "s" : ""}`}
+              </span>
+            </div>
+            <div className="flex gap-1.5">
+              {WEEK_DAYS.map(({ idx, label: dayLabel }) => {
+                const selected = fDays.includes(idx);
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => toggleFormDay(idx)}
+                    className="flex-1 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{
+                      background: selected ? fColor : "rgba(250,246,240,0.8)",
+                      color:      selected ? "white" : "var(--text-soft)",
+                      border:     selected ? `1.5px solid ${fColor}` : "1.5px solid rgba(200,184,224,0.3)",
+                    }}
+                  >
+                    {dayLabel.slice(0, 1)}
+                  </button>
+                );
+              })}
+            </div>
+            {fDays.length === 0 && (
+              <p className="text-xs mt-1.5" style={{ color: "var(--text-soft)" }}>
+                No days selected — habit will appear every day
+              </p>
+            )}
+          </div>
+
           {/* Target per week */}
           <div className="mb-5">
             <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-soft)" }}>
@@ -645,20 +726,25 @@ export default function HabitsPage() {
                 {fName || "Habit name"}
               </div>
               <div className="text-xs mt-0.5" style={{ color: "var(--text-soft)" }}>
-                {fTarget}× per week
+                {fDays.length === 0
+                  ? `${fTarget}× per week · every day`
+                  : WEEK_DAYS.filter(({ idx }) => fDays.includes(idx)).map(({ label: l }) => l).join(", ")}
               </div>
             </div>
             <div className="ml-auto flex gap-1">
-              {Array.from({ length: 7 }, (_, i) => (
-                <div
-                  key={i}
-                  className="w-5 h-5 rounded-full"
-                  style={{
-                    background: i < fTarget ? fColor : "rgba(200,184,224,0.2)",
-                    border: `2px solid ${i < fTarget ? fColor : "rgba(200,184,224,0.2)"}`,
-                  }}
-                />
-              ))}
+              {WEEK_DAYS.map(({ idx }) => {
+                const active = fDays.length === 0 || fDays.includes(idx);
+                return (
+                  <div
+                    key={idx}
+                    className="w-5 h-5 rounded-full"
+                    style={{
+                      background: active ? fColor : "rgba(200,184,224,0.2)",
+                      border: `2px solid ${active ? fColor : "rgba(200,184,224,0.2)"}`,
+                    }}
+                  />
+                );
+              })}
             </div>
           </div>
 

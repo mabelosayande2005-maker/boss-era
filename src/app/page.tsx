@@ -5,7 +5,7 @@ import { format } from "date-fns";
 import { Plus, X, Sparkles } from "lucide-react";
 import { getGreeting, todayISO } from "@/lib/utils";
 
-type Habit = { id: number; name: string; emoji: string; target_per_week: number; color: string };
+type Habit = { id: number; name: string; emoji: string; target_per_week: number; color: string; days?: string | null };
 type Task = { id: number; title: string; stream: string; completed: boolean; notes?: string };
 type Mood = { score: number; note: string } | null;
 
@@ -124,7 +124,12 @@ export default function HomePage() {
     });
   };
 
-  const habitsDone = habits.filter(h => completedHabits.includes(h.id));
+  const todayDayIdx = new Date().getDay(); // 0=Sun … 6=Sat
+  const todaysHabits = habits.filter(h => {
+    if (!h.days) return true;
+    return h.days.split(",").map(Number).includes(todayDayIdx);
+  });
+  const habitsDone = todaysHabits.filter(h => completedHabits.includes(h.id));
   const pendingTasks = tasks.filter(t => !t.completed);
   const doneTasks = tasks.filter(t => t.completed);
 
@@ -156,7 +161,7 @@ export default function HomePage() {
         {/* Quick stats */}
         <div className="grid grid-cols-3 gap-3 mt-5">
           {[
-            { label: "habits", value: `${habitsDone.length}/${habits.length}`, color: "var(--sage)" },
+            { label: "habits", value: `${habitsDone.length}/${todaysHabits.length}`, color: "var(--sage)" },
             { label: "tasks", value: `${doneTasks.length}/${tasks.length}`, color: "var(--rose)" },
             { label: "today", value: `£${todayIncome.toFixed(0)}`, color: "var(--gold)" },
           ].map(stat => (
@@ -196,7 +201,7 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {habits.map(habit => {
+              {todaysHabits.map(habit => {
                 const done = completedHabits.includes(habit.id);
                 return (
                   <button
@@ -232,9 +237,11 @@ export default function HomePage() {
                   </button>
                 );
               })}
-              {habits.length === 0 && (
+              {todaysHabits.length === 0 && (
                 <p className="text-sm text-center py-6" style={{ color: "var(--text-soft)" }}>
-                  Set up habits in the <a href="/habits" className="underline" style={{ color: "var(--sage)" }}>Habits</a> section
+                  {habits.length === 0
+                    ? <>Set up habits in the <a href="/habits" className="underline" style={{ color: "var(--sage)" }}>Habits</a> section</>
+                    : "No habits scheduled for today ✦"}
                 </p>
               )}
             </div>
