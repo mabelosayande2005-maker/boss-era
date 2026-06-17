@@ -41,11 +41,11 @@ export default function HomePage() {
   const fetchAll = useCallback(async () => {
     try {
       const [habitsRes, tasksRes, moodRes, incomeRes, affRes] = await Promise.all([
-        fetch("/api/habits"),
-        fetch("/api/tasks"),
-        fetch("/api/mood"),
-        fetch("/api/income"),
-        fetch("/api/affirmations"),
+        fetch("/api/habits", { cache: "no-store" }),
+        fetch("/api/tasks", { cache: "no-store" }),
+        fetch("/api/mood", { cache: "no-store" }),
+        fetch("/api/income", { cache: "no-store" }),
+        fetch("/api/affirmations", { cache: "no-store" }),
       ]);
       const [habitsData, tasksData, moodData, incomeData, affData] = await Promise.all([
         habitsRes.json(),

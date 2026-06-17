@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 async function ensureTables() {
   const sql = getDb();
   await sql`CREATE TABLE IF NOT EXISTS tasks (
@@ -14,6 +16,25 @@ async function ensureTables() {
     is_today BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT NOW()
   )`;
+  // task_date tracks which day's list this task belongs to (separate from due_date deadline)
+  await sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_date DATE DEFAULT CURRENT_DATE`;
+  // Backfill legacy rows that have no task_date yet
+  await sql`UPDATE tasks SET task_date = created_at::date WHERE task_date IS NULL`;
+}
+
+// Neon returns DATE/TIMESTAMP columns as JS Date objects server-side.
+const norm = (d: unknown) =>
+  d == null ? null : d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+
+function normalizeTask(t: Record<string, unknown>) {
+  return {
+    ...t,
+    due_date: norm(t.due_date),
+    task_date: norm(t.task_date),
+    completed_at: t.completed_at instanceof Date
+      ? (t.completed_at as Date).toISOString()
+      : t.completed_at ?? null,
+  };
 }
 
 export async function GET() {
@@ -21,14 +42,17 @@ export async function GET() {
     const sql = getDb();
     await ensureTables();
     const today = new Date().toISOString().split("T")[0];
+    // Show today's tasks (any completion state) + incomplete tasks from previous days
     const tasks = await sql`
       SELECT * FROM tasks
-      WHERE is_today = TRUE OR due_date = ${today}
-      ORDER BY completed ASC, created_at ASC
+      WHERE task_date::date = ${today}::date
+         OR (task_date::date < ${today}::date AND completed = FALSE)
+      ORDER BY completed ASC, task_date ASC, created_at ASC
     `;
-    return NextResponse.json({ tasks });
-  } catch {
-    return NextResponse.json({ tasks: [] });
+    return NextResponse.json({ tasks: tasks.map(normalizeTask) });
+  } catch (e) {
+    console.error("[tasks GET]", e);
+    return NextResponse.json({ error: String(e), tasks: [] }, { status: 500 });
   }
 }
 
@@ -41,21 +65,23 @@ export async function POST(req: Request) {
 
     if (action === "add") {
       const [task] = await sql`
-        INSERT INTO tasks (title, stream, due_date, notes, is_today)
-        VALUES (${title}, ${stream || "admin"}, ${dueDate || null}, ${notes || null}, TRUE)
+        INSERT INTO tasks (title, stream, due_date, notes, is_today, task_date)
+        VALUES (${title}, ${stream || "admin"}, ${dueDate || null}, ${notes || null}, TRUE, CURRENT_DATE)
         RETURNING *
       `;
-      return NextResponse.json({ task });
+      return NextResponse.json({ task: normalizeTask(task as Record<string, unknown>) });
     }
 
     if (action === "toggle") {
       const [existing] = await sql`SELECT completed FROM tasks WHERE id = ${taskId}`;
       const newCompleted = !existing.completed;
       const [task] = await sql`
-        UPDATE tasks SET completed = ${newCompleted}, completed_at = ${newCompleted ? new Date().toISOString() : null}
+        UPDATE tasks
+        SET completed = ${newCompleted},
+            completed_at = ${newCompleted ? new Date().toISOString() : null}
         WHERE id = ${taskId} RETURNING *
       `;
-      return NextResponse.json({ task });
+      return NextResponse.json({ task: normalizeTask(task as Record<string, unknown>) });
     }
 
     if (action === "delete") {
@@ -65,6 +91,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
+    console.error("[tasks POST]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
