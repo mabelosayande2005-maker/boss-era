@@ -18,7 +18,8 @@
       "Bash(curl -s http://localhost:3000)",
       "Bash(npm_config_cache=.npm-cache npm run build)",
       "Bash(npm_config_cache=.npm-cache npx tsc --noEmit)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(npx tsc *)"
     ]
   }
 }

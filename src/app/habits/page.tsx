@@ -101,7 +101,7 @@ export default function HabitsPage() {
     completions.some(
       (c) =>
         c.habit_id === habitId &&
-        (c.completed_date as string).startsWith(toISO(day))
+        String(c.completed_date).startsWith(toISO(day))
     );
 
   const doneCountThisWeek = (habitId: number) =>
@@ -128,7 +128,7 @@ export default function HabitsPage() {
     setCompletions((prev) =>
       wasCompleted
         ? prev.filter(
-            (c) => !(c.habit_id === habitId && (c.completed_date as string).startsWith(date))
+            (c) => !(c.habit_id === habitId && String(c.completed_date).startsWith(date))
           )
         : [...prev, { habit_id: habitId, completed_date: date }]
     );
