@@ -76,6 +76,8 @@ export default function HabitsPage() {
         throw new Error(err.error || `HTTP ${res.status}`);
       }
       const data = await res.json();
+      console.log("[habits] raw completions from API:", JSON.stringify(data.completions?.slice(0, 3)));
+      console.log("[habits] typeof first completed_date:", typeof data.completions?.[0]?.completed_date, "| value:", data.completions?.[0]?.completed_date);
       setHabits(data.habits ?? []);
       // Neon returns DATE columns as JS Date objects in some runtimes.
       // Normalise to "yyyy-MM-dd" strings so .startsWith() never throws.
