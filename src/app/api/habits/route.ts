@@ -40,16 +40,24 @@ export async function GET(req: Request) {
         AND completed_date < (${weekStart}::date + INTERVAL '7 days')
     `;
 
-    // Also return today's completions separately (used by home dashboard)
+    // Neon returns DATE columns as JS Date objects server-side.
+    // Normalise to "yyyy-MM-dd" strings before any comparison or JSON response.
+    const norm = (d: unknown) =>
+      d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
+
     const today = new Date().toISOString().split("T")[0];
-    const todayCompletions = completions.filter(
-      (c) => (c.completed_date as string).startsWith(today)
-    );
+    const normCompletions = completions.map((c) => ({
+      habit_id: c.habit_id as number,
+      completed_date: norm(c.completed_date),
+    }));
+    const completedToday = normCompletions
+      .filter((c) => c.completed_date === today)
+      .map((c) => c.habit_id);
 
     return NextResponse.json({
       habits,
-      completions,           // {habit_id, completed_date}[] for the full week
-      completedToday: todayCompletions.map((c) => c.habit_id as number),
+      completions: normCompletions,
+      completedToday,
     });
   } catch (e) {
     console.error("[habits GET]", e);
