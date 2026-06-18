@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { format } from "date-fns";
-import { Plus, X, Sparkles } from "lucide-react";
+import { format, parseISO } from "date-fns";
+import { Plus, X, Sparkles, CalendarDays, Calendar } from "lucide-react";
 import { getGreeting, todayISO } from "@/lib/utils";
 
 type Habit = { id: number; name: string; emoji: string; target_per_week: number; color: string; days?: string | null };
 type Task = { id: number; title: string; stream: string; completed: boolean; notes?: string };
 type Mood = { score: number; note: string } | null;
+type CalEvent = { id: string; title: string; start: string | null; end: string | null; allDay: boolean; htmlLink: string | null };
 
 const MOOD_EMOJIS = ["😢", "😕", "😐", "🙂", "✨"];
 const MOOD_LABELS = ["Rough", "Meh", "Okay", "Good", "Amazing"];
@@ -32,6 +33,17 @@ export default function HomePage() {
   const [showAddTask, setShowAddTask] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dbReady, setDbReady] = useState(false);
+
+  // Calendar
+  const [calEvents, setCalEvents] = useState<CalEvent[]>([]);
+  const [calConnected, setCalConnected] = useState(false);
+  const [calConfigured, setCalConfigured] = useState(false);
+  const [calLoading, setCalLoading] = useState(false);
+  const [syncingTask, setSyncingTask] = useState<number | null>(null);
+  const [syncedTasks, setSyncedTasks] = useState<Set<number>>(new Set());
+  const [syncingHabits, setSyncingHabits] = useState(false);
+  const [habitsSynced, setHabitsSynced] = useState(false);
+  const [calBanner, setCalBanner] = useState<"connected" | "error" | null>(null);
 
   const today = todayISO();
   const greeting = getGreeting();
@@ -68,7 +80,35 @@ export default function HomePage() {
     setLoading(false);
   }, []);
 
+  const fetchCalendar = useCallback(async () => {
+    setCalLoading(true);
+    try {
+      const [statusRes, eventsRes] = await Promise.all([
+        fetch("/api/calendar/status", { cache: "no-store" }),
+        fetch("/api/calendar/events", { cache: "no-store" }),
+      ]);
+      const [statusData, eventsData] = await Promise.all([statusRes.json(), eventsRes.json()]);
+      setCalConfigured(statusData.configured ?? false);
+      setCalConnected(statusData.connected ?? false);
+      setCalEvents(eventsData.events ?? []);
+    } catch { /* calendar is optional */ }
+    setCalLoading(false);
+  }, []);
+
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  useEffect(() => {
+    fetchCalendar();
+    // Check for OAuth callback result in URL
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("calendar_connected") === "1") {
+      setCalBanner("connected");
+      window.history.replaceState({}, "", "/");
+    } else if (params.get("calendar_error")) {
+      setCalBanner("error");
+      window.history.replaceState({}, "", "/");
+    }
+  }, [fetchCalendar]);
 
   const toggleHabit = async (habitId: number) => {
     const res = await fetch("/api/habits", {
@@ -124,6 +164,49 @@ export default function HomePage() {
     });
   };
 
+  const syncTaskToCalendar = async (task: Task) => {
+    if (syncingTask === task.id) return;
+    setSyncingTask(task.id);
+    try {
+      const res = await fetch("/api/calendar/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: task.title, date: today, description: `Task from Boss Era${task.stream && task.stream !== "admin" ? ` · ${task.stream}` : ""}` }),
+      });
+      if (res.ok) {
+        setSyncedTasks(prev => new Set([...prev, task.id]));
+      }
+    } catch { /* best-effort */ }
+    setSyncingTask(null);
+  };
+
+  const disconnectCalendar = async () => {
+    await fetch("/api/calendar/disconnect", { method: "POST" });
+    setCalConnected(false);
+    setCalEvents([]);
+  };
+
+  const syncHabitsToCalendar = async () => {
+    if (syncingHabits || !calConnected) return;
+    setSyncingHabits(true);
+    await Promise.all(
+      todaysHabits.map(h =>
+        fetch("/api/calendar/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: `${h.emoji} ${h.name}`, date: today, description: "Habit from Boss Era ✦" }),
+        }).catch(() => null)
+      )
+    );
+    setSyncingHabits(false);
+    setHabitsSynced(true);
+  };
+
+  const fmtTime = (dt: string | null) => {
+    if (!dt) return "";
+    try { return format(parseISO(dt), "h:mm a"); } catch { return ""; }
+  };
+
   const todayDayIdx = new Date().getDay(); // 0=Sun … 6=Sat
   const todaysHabits = habits.filter(h => {
     if (!h.days) return true;
@@ -135,6 +218,22 @@ export default function HomePage() {
 
   return (
     <div className="space-y-5 py-2">
+      {/* OAuth result banner */}
+      {calBanner === "connected" && (
+        <div className="card px-4 py-3 flex items-center gap-3" style={{ background: "rgba(184,212,200,0.35)", border: "1.5px solid rgba(143,173,160,0.5)" }}>
+          <span>✅</span>
+          <span className="text-sm font-medium" style={{ color: "var(--sage)" }}>Google Calendar connected!</span>
+          <button className="ml-auto opacity-60 hover:opacity-100 transition-opacity" onClick={() => setCalBanner(null)}><X size={14} /></button>
+        </div>
+      )}
+      {calBanner === "error" && (
+        <div className="card px-4 py-3 flex items-center gap-3" style={{ background: "rgba(232,180,184,0.35)", border: "1.5px solid rgba(200,100,100,0.3)" }}>
+          <span>⚠️</span>
+          <span className="text-sm font-medium" style={{ color: "var(--rose)" }}>Calendar connection failed — check your Google credentials.</span>
+          <button className="ml-auto opacity-60 hover:opacity-100 transition-opacity" onClick={() => setCalBanner(null)}><X size={14} /></button>
+        </div>
+      )}
+
       {/* Header hero card */}
       <div className="card px-6 py-5" style={{
         background: "linear-gradient(135deg, rgba(222,238,232,0.9) 0%, rgba(245,213,216,0.7) 50%, rgba(237,232,245,0.8) 100%)",
@@ -185,7 +284,19 @@ export default function HomePage() {
             <h2 className="font-display font-bold italic text-xl" style={{ color: "var(--text-dark)" }}>
               Today&apos;s Habits
             </h2>
-            <div className="ml-auto progress-track flex-1 max-w-[80px]">
+            {calConnected && todaysHabits.length > 0 && (
+              <button
+                onClick={syncHabitsToCalendar}
+                disabled={syncingHabits || habitsSynced}
+                title="Sync all today's habits to Google Calendar"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all disabled:opacity-40"
+                style={{ background: habitsSynced ? "rgba(184,212,200,0.3)" : "var(--cream-dark)", color: habitsSynced ? "var(--sage)" : "var(--text-soft)", border: "1.5px solid rgba(143,173,160,0.2)" }}
+              >
+                <Calendar size={10} />
+                {habitsSynced ? "Synced" : syncingHabits ? "…" : "Sync"}
+              </button>
+            )}
+            <div className={`${calConnected ? "" : "ml-auto"} progress-track flex-1 max-w-[80px]`}>
               <div
                 className="progress-fill"
                 style={{ width: habits.length ? `${(habitsDone.length / habits.length) * 100}%` : "0%" }}
@@ -295,6 +406,21 @@ export default function HomePage() {
                 {task.stream && task.stream !== "admin" && (
                   <span className={`tag ${STREAM_COLORS[task.stream] || "tag-sage"} text-xs`}>{task.stream}</span>
                 )}
+                {calConnected && (
+                  <button
+                    onClick={() => syncTaskToCalendar(task)}
+                    disabled={syncingTask === task.id}
+                    title="Add to Google Calendar"
+                    className="w-5 h-5 rounded flex items-center justify-center opacity-40 hover:opacity-100 transition-opacity disabled:opacity-20"
+                    style={{ color: syncedTasks.has(task.id) ? "var(--sage)" : "var(--text-soft)" }}
+                  >
+                    {syncingTask === task.id ? (
+                      <span className="text-[9px]">…</span>
+                    ) : (
+                      <Calendar size={11} />
+                    )}
+                  </button>
+                )}
                 <button
                   onClick={() => deleteTask(task.id)}
                   className="w-5 h-5 rounded flex items-center justify-center opacity-40 hover:opacity-100 transition-opacity"
@@ -393,6 +519,79 @@ export default function HomePage() {
             ✦ rotates daily · your personal mantras
           </p>
         </div>
+      </div>
+
+      {/* Google Calendar — Today's Schedule */}
+      <div className="card px-5 py-4">
+        <div className="flex items-center gap-2 mb-4">
+          <CalendarDays size={18} style={{ color: "var(--sage)" }} />
+          <h2 className="font-display font-bold italic text-xl" style={{ color: "var(--text-dark)" }}>
+            Today&apos;s Schedule
+          </h2>
+          {calConnected && (
+            <button
+              onClick={disconnectCalendar}
+              className="ml-auto text-xs px-2 py-1 rounded-lg transition-colors hover:opacity-70"
+              style={{ color: "var(--text-soft)", background: "var(--cream-dark)" }}
+            >
+              Disconnect
+            </button>
+          )}
+        </div>
+
+        {calLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map(i => (
+              <div key={i} className="h-12 rounded-xl animate-pulse" style={{ background: "var(--cream-dark)" }} />
+            ))}
+          </div>
+        ) : !calConfigured ? (
+          <div className="text-center py-5 space-y-2">
+            <p className="text-sm" style={{ color: "var(--text-soft)" }}>
+              Add <code className="px-1 rounded text-xs" style={{ background: "var(--cream-dark)" }}>GOOGLE_CLIENT_ID</code> and{" "}
+              <code className="px-1 rounded text-xs" style={{ background: "var(--cream-dark)" }}>GOOGLE_CLIENT_SECRET</code> to your env vars to enable calendar sync.
+            </p>
+          </div>
+        ) : !calConnected ? (
+          <div className="flex flex-col items-center gap-3 py-5">
+            <p className="text-sm text-center" style={{ color: "var(--text-soft)" }}>
+              See today&apos;s events and push tasks &amp; habits straight to Google Calendar.
+            </p>
+            <a
+              href="/api/calendar/auth"
+              className="btn-primary text-sm"
+              style={{ textDecoration: "none" }}
+            >
+              Connect Google Calendar
+            </a>
+          </div>
+        ) : calEvents.length === 0 ? (
+          <p className="text-sm text-center py-5" style={{ color: "var(--text-soft)" }}>
+            Nothing scheduled today ✦
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {calEvents.map(ev => (
+              <a
+                key={ev.id}
+                href={ev.htmlLink ?? "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-opacity hover:opacity-75"
+                style={{ background: "rgba(184,212,200,0.15)", border: "1.5px solid rgba(143,173,160,0.25)", textDecoration: "none" }}
+              >
+                <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ background: "var(--sage)" }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate" style={{ color: "var(--text-dark)" }}>{ev.title}</div>
+                  <div className="text-xs" style={{ color: "var(--text-soft)" }}>
+                    {ev.allDay ? "All day" : `${fmtTime(ev.start)} – ${fmtTime(ev.end)}`}
+                  </div>
+                </div>
+                <span className="text-xs flex-shrink-0" style={{ color: "var(--text-soft)" }}>↗</span>
+              </a>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Income strip */}
