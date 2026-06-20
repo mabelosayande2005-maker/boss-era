@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, parseISO } from "date-fns";
-import { Plus, X, BookOpen, CalendarDays, Calendar } from "lucide-react";
+import { Plus, X, BookOpen, CalendarDays, Calendar, Target } from "lucide-react";
 import { getGreeting, todayISO } from "@/lib/utils";
 
 type Habit = { id: number; name: string; emoji: string; target_per_week: number; color: string; days?: string | null };
 type Task = { id: number; title: string; stream: string; completed: boolean; notes?: string };
 type Mood = { score: number; note: string } | null;
 type CalEvent = { id: string; title: string; start: string | null; end: string | null; allDay: boolean; htmlLink: string | null };
+type WeeklyGoal = { id: number; text: string };
 
 const MOOD_EMOJIS = ["😢", "😕", "😐", "🙂", "✨"];
 const MOOD_LABELS = ["Rough", "Meh", "Okay", "Good", "Amazing"];
@@ -28,6 +29,9 @@ export default function HomePage() {
   const [mood, setMood] = useState<Mood>(null);
   const [moodNote, setMoodNote] = useState("");
   const [verse, setVerse] = useState<{ ref: string; text: string } | null>(null);
+  const [weeklyGoals, setWeeklyGoals] = useState<WeeklyGoal[]>([]);
+  const [newWeeklyGoal, setNewWeeklyGoal] = useState("");
+  const [addingWeeklyGoal, setAddingWeeklyGoal] = useState(false);
   const [todayIncome, setTodayIncome] = useState(0);
   const [newTask, setNewTask] = useState("");
   const [showAddTask, setShowAddTask] = useState(false);
@@ -55,19 +59,21 @@ export default function HomePage() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [habitsRes, tasksRes, moodRes, incomeRes, verseRes] = await Promise.all([
+      const [habitsRes, tasksRes, moodRes, incomeRes, verseRes, weeklyGoalsRes] = await Promise.all([
         fetch("/api/habits", { cache: "no-store" }),
         fetch("/api/tasks", { cache: "no-store" }),
         fetch("/api/mood", { cache: "no-store" }),
         fetch("/api/income", { cache: "no-store" }),
         fetch("/api/verse", { cache: "no-store" }),
+        fetch("/api/weekly-goals", { cache: "no-store" }),
       ]);
-      const [habitsData, tasksData, moodData, incomeData, verseData] = await Promise.all([
+      const [habitsData, tasksData, moodData, incomeData, verseData, weeklyGoalsData] = await Promise.all([
         habitsRes.json(),
         tasksRes.json(),
         moodRes.json(),
         incomeRes.json(),
         verseRes.json(),
+        weeklyGoalsRes.json(),
       ]);
       setHabits(habitsData.habits || []);
       setCompletedHabits(habitsData.completedToday || []);
@@ -76,6 +82,7 @@ export default function HomePage() {
       if (moodData.mood?.note) setMoodNote(moodData.mood.note);
       setTodayIncome(parseFloat(incomeData.todayTotal?.today_net || "0"));
       if (verseData.verse) setVerse(verseData.verse);
+      setWeeklyGoals(weeklyGoalsData.goals || []);
       setDbReady(true);
     } catch {
       // db not connected yet
@@ -173,6 +180,28 @@ export default function HomePage() {
       try { localStorage.setItem(checkedEventsKey, JSON.stringify([...next])); } catch { /* ignore */ }
       return next;
     });
+  };
+
+  const addWeeklyGoal = async () => {
+    if (!newWeeklyGoal.trim()) return;
+    const res = await fetch("/api/weekly-goals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "add", text: newWeeklyGoal }),
+    });
+    const data = await res.json();
+    if (data.goal) setWeeklyGoals(prev => [...prev, data.goal]);
+    setNewWeeklyGoal("");
+    setAddingWeeklyGoal(false);
+  };
+
+  const deleteWeeklyGoal = async (id: number) => {
+    await fetch("/api/weekly-goals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", id }),
+    });
+    setWeeklyGoals(prev => prev.filter(g => g.id !== id));
   };
 
   const saveMood = async (score: number) => {
@@ -546,6 +575,70 @@ export default function HomePage() {
             ✦ {verse?.ref || "Psalm 28:7"} · rotates daily
           </p>
         </div>
+      </div>
+
+      {/* Weekly Goals */}
+      <div className="card px-5 py-4">
+        <div className="flex items-center gap-2 mb-4">
+          <Target size={18} style={{ color: "var(--rose)" }} />
+          <h2 className="font-display font-bold italic text-xl" style={{ color: "var(--text-dark)" }}>
+            This Week&apos;s Goals
+          </h2>
+          <button
+            onClick={() => setAddingWeeklyGoal(v => !v)}
+            className="ml-auto w-7 h-7 flex items-center justify-center rounded-full transition-colors hover:opacity-70"
+            style={{ background: "var(--rose-pale)", color: "var(--rose)" }}
+            aria-label="Add goal"
+          >
+            <Plus size={15} />
+          </button>
+        </div>
+
+        {addingWeeklyGoal && (
+          <div className="flex gap-2 mb-3">
+            <input
+              autoFocus
+              value={newWeeklyGoal}
+              onChange={e => setNewWeeklyGoal(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") addWeeklyGoal(); if (e.key === "Escape") { setAddingWeeklyGoal(false); setNewWeeklyGoal(""); } }}
+              placeholder="e.g. Film content this week…"
+              className="flex-1 px-3 py-2 rounded-xl text-sm border-0 outline-none"
+              style={{ background: "var(--cream-dark)", color: "var(--text-dark)" }}
+            />
+            <button
+              onClick={addWeeklyGoal}
+              className="btn-primary text-sm px-3 py-2"
+            >
+              Add
+            </button>
+          </div>
+        )}
+
+        {weeklyGoals.length === 0 && !addingWeeklyGoal ? (
+          <p className="text-sm text-center py-3" style={{ color: "var(--text-soft)" }}>
+            No goals set for this week yet ✦
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {weeklyGoals.map(goal => (
+              <li
+                key={goal.id}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl group"
+                style={{ background: "rgba(245,213,216,0.2)", border: "1.5px solid rgba(200,150,160,0.2)" }}
+              >
+                <span className="text-rose-400 flex-shrink-0 select-none" style={{ color: "var(--rose)" }}>✦</span>
+                <span className="flex-1 text-sm leading-snug" style={{ color: "var(--text-dark)" }}>{goal.text}</span>
+                <button
+                  onClick={() => deleteWeeklyGoal(goal.id)}
+                  className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity flex-shrink-0"
+                  aria-label="Delete goal"
+                >
+                  <X size={14} style={{ color: "var(--text-soft)" }} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* Google Calendar — Today's Schedule */}
