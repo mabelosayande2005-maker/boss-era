@@ -33,6 +33,18 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const weekStart = searchParams.get("weekStart");
 
+    // Single-date fetch (used by home page for today's content tasks)
+    const date = searchParams.get("date");
+    if (date) {
+      const items = await sql`
+        SELECT * FROM content_items
+        WHERE scheduled_date = ${date}::date
+          AND brand IN ('Personal TikTok', 'StudyGlow')
+        ORDER BY created_at ASC
+      ` as Record<string, unknown>[];
+      return NextResponse.json({ items: items.map(normItem) });
+    }
+
     let scheduled: Record<string, unknown>[];
     if (weekStart) {
       scheduled = await sql`

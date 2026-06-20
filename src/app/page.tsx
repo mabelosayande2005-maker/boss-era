@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, parseISO } from "date-fns";
-import { Plus, X, BookOpen, CalendarDays, Calendar, Target } from "lucide-react";
+import { Plus, X, BookOpen, CalendarDays, Calendar, Target, Film } from "lucide-react";
 import { getGreeting, todayISO } from "@/lib/utils";
 
 type Habit = { id: number; name: string; emoji: string; target_per_week: number; color: string; days?: string | null };
@@ -10,6 +10,7 @@ type Task = { id: number; title: string; stream: string; completed: boolean; not
 type Mood = { score: number; note: string } | null;
 type CalEvent = { id: string; title: string; start: string | null; end: string | null; allDay: boolean; htmlLink: string | null };
 type WeeklyGoal = { id: number; text: string };
+type ContentTask = { id: number; title: string; brand: string; status: string };
 
 const MOOD_EMOJIS = ["😢", "😕", "😐", "🙂", "✨"];
 const MOOD_LABELS = ["Rough", "Meh", "Okay", "Good", "Amazing"];
@@ -32,6 +33,8 @@ export default function HomePage() {
   const [weeklyGoals, setWeeklyGoals] = useState<WeeklyGoal[]>([]);
   const [newWeeklyGoal, setNewWeeklyGoal] = useState("");
   const [addingWeeklyGoal, setAddingWeeklyGoal] = useState(false);
+  const [contentTasks, setContentTasks] = useState<ContentTask[]>([]);
+  const [checkedContentTasks, setCheckedContentTasks] = useState<Set<number>>(new Set());
   const [todayIncome, setTodayIncome] = useState(0);
   const [newTask, setNewTask] = useState("");
   const [showAddTask, setShowAddTask] = useState(false);
@@ -59,21 +62,23 @@ export default function HomePage() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [habitsRes, tasksRes, moodRes, incomeRes, verseRes, weeklyGoalsRes] = await Promise.all([
+      const [habitsRes, tasksRes, moodRes, incomeRes, verseRes, weeklyGoalsRes, contentRes] = await Promise.all([
         fetch("/api/habits", { cache: "no-store" }),
         fetch("/api/tasks", { cache: "no-store" }),
         fetch("/api/mood", { cache: "no-store" }),
         fetch("/api/income", { cache: "no-store" }),
         fetch("/api/verse", { cache: "no-store" }),
         fetch("/api/weekly-goals", { cache: "no-store" }),
+        fetch(`/api/content?date=${today}`, { cache: "no-store" }),
       ]);
-      const [habitsData, tasksData, moodData, incomeData, verseData, weeklyGoalsData] = await Promise.all([
+      const [habitsData, tasksData, moodData, incomeData, verseData, weeklyGoalsData, contentData] = await Promise.all([
         habitsRes.json(),
         tasksRes.json(),
         moodRes.json(),
         incomeRes.json(),
         verseRes.json(),
         weeklyGoalsRes.json(),
+        contentRes.json(),
       ]);
       setHabits(habitsData.habits || []);
       setCompletedHabits(habitsData.completedToday || []);
@@ -83,6 +88,7 @@ export default function HomePage() {
       setTodayIncome(parseFloat(incomeData.todayTotal?.today_net || "0"));
       if (verseData.verse) setVerse(verseData.verse);
       setWeeklyGoals(weeklyGoalsData.goals || []);
+      setContentTasks(contentData.items || []);
       setDbReady(true);
     } catch {
       // db not connected yet
@@ -115,6 +121,8 @@ export default function HomePage() {
       if (saved) setSyncedTasks(new Set(JSON.parse(saved) as number[]));
       const savedChecked = localStorage.getItem(checkedEventsKey);
       if (savedChecked) setCheckedCalEvents(new Set(JSON.parse(savedChecked) as string[]));
+      const savedContent = localStorage.getItem(`content_checked_${today}`);
+      if (savedContent) setCheckedContentTasks(new Set(JSON.parse(savedContent) as number[]));
     } catch { /* localStorage unavailable */ }
 
     // Check for OAuth callback result in URL
@@ -178,6 +186,15 @@ export default function HomePage() {
       const next = new Set(prev);
       if (next.has(eventId)) { next.delete(eventId); } else { next.add(eventId); }
       try { localStorage.setItem(checkedEventsKey, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
+  const toggleContentTask = (id: number) => {
+    setCheckedContentTasks(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
+      try { localStorage.setItem(`content_checked_${today}`, JSON.stringify([...next])); } catch { /* ignore */ }
       return next;
     });
   };
@@ -254,6 +271,8 @@ export default function HomePage() {
   const doneTasks = tasks.filter(t => t.completed);
   const pendingCalTasks = calEvents.filter(e => !checkedCalEvents.has(e.id));
   const doneCalTasks = calEvents.filter(e => checkedCalEvents.has(e.id));
+  const pendingContentTasks = contentTasks.filter(c => !checkedContentTasks.has(c.id));
+  const doneContentTasks = contentTasks.filter(c => checkedContentTasks.has(c.id));
 
   return (
     <div className="space-y-5 py-2">
@@ -300,7 +319,7 @@ export default function HomePage() {
         <div className="grid grid-cols-3 gap-3 mt-5">
           {[
             { label: "habits", value: `${habitsDone.length}/${todaysHabits.length}`, color: "var(--sage)" },
-            { label: "tasks", value: `${doneTasks.length + doneCalTasks.length}/${tasks.length + calEvents.length}`, color: "var(--rose)" },
+            { label: "tasks", value: `${doneTasks.length + doneCalTasks.length + doneContentTasks.length}/${tasks.length + calEvents.length + contentTasks.length}`, color: "var(--rose)" },
             { label: "today", value: `£${todayIncome.toFixed(0)}`, color: "var(--gold)" },
           ].map(stat => (
             <div key={stat.label} className="rounded-2xl px-3 py-2.5 text-center" style={{ background: "rgba(255,255,255,0.65)" }}>
@@ -471,7 +490,25 @@ export default function HomePage() {
               </div>
             ))}
 
-            {(doneTasks.length > 0 || doneCalTasks.length > 0) && (
+            {pendingContentTasks.map(ct => (
+              <div
+                key={ct.id}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl"
+                style={{ background: "rgba(245,213,216,0.15)", border: "1.5px solid rgba(200,150,160,0.22)" }}
+              >
+                <input type="checkbox" className="checkbox-fairy" checked={false} onChange={() => toggleContentTask(ct.id)} />
+                <Film size={13} className="flex-shrink-0" style={{ color: "var(--rose)" }} />
+                <a href="/content" className="text-sm flex-1 truncate hover:underline" style={{ color: "var(--text-dark)", textDecoration: "none" }}>
+                  {ct.title}
+                </a>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 capitalize" style={{
+                  background: ct.status === "posted" ? "rgba(184,212,200,0.3)" : ct.status === "edited" ? "rgba(200,184,224,0.3)" : ct.status === "filmed" ? "rgba(253,248,236,0.9)" : "rgba(250,246,240,0.9)",
+                  color:      ct.status === "posted" ? "var(--sage)"    : ct.status === "edited" ? "var(--lavender)"   : ct.status === "filmed" ? "var(--gold)"    : "var(--text-soft)",
+                }}>{ct.status}</span>
+              </div>
+            ))}
+
+            {(doneTasks.length > 0 || doneCalTasks.length > 0 || doneContentTasks.length > 0) && (
               <>
                 <div className="divider-fairy" />
                 {doneTasks.map(task => (
@@ -505,10 +542,17 @@ export default function HomePage() {
                     <span className="text-sm line-through flex-1" style={{ color: "var(--text-soft)" }}>{ev.title}</span>
                   </div>
                 ))}
+                {doneContentTasks.map(ct => (
+                  <div key={ct.id} className="flex items-center gap-2.5 px-3 py-2 rounded-xl opacity-50" style={{ background: "rgba(245,213,216,0.08)" }}>
+                    <input type="checkbox" className="checkbox-fairy" checked={true} onChange={() => toggleContentTask(ct.id)} />
+                    <Film size={13} className="flex-shrink-0" style={{ color: "var(--rose)" }} />
+                    <span className="text-sm line-through flex-1" style={{ color: "var(--text-soft)" }}>{ct.title}</span>
+                  </div>
+                ))}
               </>
             )}
 
-            {tasks.length === 0 && calEvents.length === 0 && !loading && !showAddTask && (
+            {tasks.length === 0 && calEvents.length === 0 && contentTasks.length === 0 && !loading && !showAddTask && (
               <p className="text-sm text-center py-6" style={{ color: "var(--text-soft)" }}>
                 Clear slate ✦ tap + to add tasks
               </p>
