@@ -21,7 +21,7 @@ export async function POST(request: Request): Promise<Response> {
     const blob = await put(
       `vinted/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, "-")}`,
       file,
-      { access: "public", token: process.env.BLOB_READ_WRITE_TOKEN }
+      { access: "private", token: process.env.BLOB_READ_WRITE_TOKEN }
     );
     console.log("[vinted upload] done →", blob.url);
     return NextResponse.json({ url: blob.url });
