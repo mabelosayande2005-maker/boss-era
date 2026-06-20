@@ -65,6 +65,7 @@ export async function POST(req: Request) {
     await ensureTables();
     const body = await req.json();
     const { action, id } = body;
+    console.log("[learning POST] action:", action, "id:", id ?? null);
 
     if (action === "add-book") {
       const { title, author, genre, status, coverEmoji, notes } = body;
@@ -73,6 +74,7 @@ export async function POST(req: Request) {
         VALUES (${title}, ${author || null}, ${genre || "Non-fiction"}, ${status || "want"}, ${coverEmoji || "📖"}, ${notes || null})
         RETURNING *
       `;
+      console.log("[learning POST] inserted book id:", (book as Record<string, unknown>).id);
       return NextResponse.json({ book: normBook(book as Record<string, unknown>) });
     }
 

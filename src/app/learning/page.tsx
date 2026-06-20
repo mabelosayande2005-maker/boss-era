@@ -24,6 +24,8 @@ export default function LearningPage() {
   const [bookFilter, setBookFilter] = useState<"all" | "want" | "reading" | "read">("all");
   const [showBookForm, setShowBookForm] = useState(false);
   const [showCourseForm, setShowCourseForm] = useState(false);
+  const [bTitleError, setBTitleError] = useState(false);
+  const [cTitleError, setCTitleError] = useState(false);
 
   const [bTitle, setBTitle] = useState("");
   const [bAuthor, setBAuthor] = useState("");
@@ -46,10 +48,11 @@ export default function LearningPage() {
     try {
       const res = await fetch("/api/learning", { cache: "no-store" });
       const data = await res.json();
+      if (!res.ok) { console.error("[learning fetchData]", data); }
       setBooks(data.books || []);
       setCourses(data.courses || []);
       setStats(data.stats || {});
-    } catch {/* */}
+    } catch (e) { console.error("[learning fetchData]", e); }
     setLoading(false);
   }, []);
 
@@ -59,10 +62,20 @@ export default function LearningPage() {
     fetch("/api/learning", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
   const addBook = async () => {
-    if (!bTitle) return;
-    await post({ action: "add-book", title: bTitle, author: bAuthor || null, genre: bGenre, coverEmoji: bEmoji, notes: bNotes || null });
-    setBTitle(""); setBAuthor(""); setBGenre("Non-fiction"); setBEmoji("📖"); setBNotes("");
-    setShowBookForm(false); fetchData();
+    console.log("[learning] addBook called, bTitle:", JSON.stringify(bTitle));
+    if (!bTitle.trim()) {
+      setBTitleError(true);
+      setTimeout(() => setBTitleError(false), 1200);
+      return;
+    }
+    setBTitleError(false);
+    try {
+      const res = await post({ action: "add-book", title: bTitle.trim(), author: bAuthor || null, genre: bGenre, coverEmoji: bEmoji, notes: bNotes || null });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); console.error("[learning addBook]", err); return; }
+      setBTitle(""); setBAuthor(""); setBGenre("Non-fiction"); setBEmoji("📖"); setBNotes("");
+      setShowBookForm(false);
+      await fetchData();
+    } catch (e) { console.error("[learning addBook]", e); }
   };
 
   const updateBookStatus = async (id: number, status: string, rating?: number) => {
@@ -71,10 +84,20 @@ export default function LearningPage() {
   };
 
   const addCourse = async () => {
-    if (!cTitle) return;
-    await post({ action: "add-course", title: cTitle, platform: cPlatform || null, category: cCat, link: cLink || null, emoji: cEmoji, notes: cNotes || null });
-    setCTitle(""); setCPlatform(""); setCCat("Skill"); setCLink(""); setCEmoji("🎓"); setCNotes("");
-    setShowCourseForm(false); fetchData();
+    console.log("[learning] addCourse called, cTitle:", JSON.stringify(cTitle));
+    if (!cTitle.trim()) {
+      setCTitleError(true);
+      setTimeout(() => setCTitleError(false), 1200);
+      return;
+    }
+    setCTitleError(false);
+    try {
+      const res = await post({ action: "add-course", title: cTitle.trim(), platform: cPlatform || null, category: cCat, link: cLink || null, emoji: cEmoji, notes: cNotes || null });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); console.error("[learning addCourse]", err); return; }
+      setCTitle(""); setCPlatform(""); setCCat("Skill"); setCLink(""); setCEmoji("🎓"); setCNotes("");
+      setShowCourseForm(false);
+      await fetchData();
+    } catch (e) { console.error("[learning addCourse]", e); }
   };
 
   const updateCourseProgress = async (id: number, progress: number) => {
@@ -150,7 +173,13 @@ export default function LearningPage() {
               <h3 className="font-display font-bold italic text-lg" style={{ color: "var(--text-dark)" }}>Add book</h3>
               <div className="flex gap-2">
                 <input value={bEmoji} onChange={e => setBEmoji(e.target.value)} className="input-fairy w-16 text-center text-xl" placeholder="📖" />
-                <input value={bTitle} onChange={e => setBTitle(e.target.value)} className="input-fairy flex-1" placeholder="Book title" />
+                <input
+                  value={bTitle}
+                  onChange={e => { setBTitle(e.target.value); if (e.target.value.trim()) setBTitleError(false); }}
+                  className={`input-fairy flex-1${bTitleError ? " animate-shake" : ""}`}
+                  placeholder="Book title *"
+                  style={bTitleError ? { borderColor: "var(--rose, #e88c8c)", outline: "none" } : undefined}
+                />
               </div>
               <div className="flex gap-2">
                 <input value={bAuthor} onChange={e => setBAuthor(e.target.value)} className="input-fairy flex-1" placeholder="Author" />
@@ -248,7 +277,13 @@ export default function LearningPage() {
               <h3 className="font-display font-bold italic text-lg" style={{ color: "var(--text-dark)" }}>Add course</h3>
               <div className="flex gap-2">
                 <input value={cEmoji} onChange={e => setCEmoji(e.target.value)} className="input-fairy w-16 text-center text-xl" placeholder="🎓" />
-                <input value={cTitle} onChange={e => setCTitle(e.target.value)} className="input-fairy flex-1" placeholder="Course / skill title" />
+                <input
+                  value={cTitle}
+                  onChange={e => { setCTitle(e.target.value); if (e.target.value.trim()) setCTitleError(false); }}
+                  className={`input-fairy flex-1${cTitleError ? " animate-shake" : ""}`}
+                  placeholder="Course / skill title *"
+                  style={cTitleError ? { borderColor: "var(--rose, #e88c8c)", outline: "none" } : undefined}
+                />
               </div>
               <div className="flex gap-2">
                 <input value={cPlatform} onChange={e => setCPlatform(e.target.value)} className="input-fairy flex-1" placeholder="Platform (e.g. Udemy)" />
