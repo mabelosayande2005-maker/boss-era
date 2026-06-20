@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, parseISO } from "date-fns";
-import { Plus, X, Sparkles, CalendarDays, Calendar } from "lucide-react";
+import { Plus, X, BookOpen, CalendarDays, Calendar } from "lucide-react";
 import { getGreeting, todayISO } from "@/lib/utils";
 
 type Habit = { id: number; name: string; emoji: string; target_per_week: number; color: string; days?: string | null };
@@ -27,7 +27,7 @@ export default function HomePage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [mood, setMood] = useState<Mood>(null);
   const [moodNote, setMoodNote] = useState("");
-  const [affirmation, setAffirmation] = useState("");
+  const [verse, setVerse] = useState<{ ref: string; text: string } | null>(null);
   const [todayIncome, setTodayIncome] = useState(0);
   const [newTask, setNewTask] = useState("");
   const [showAddTask, setShowAddTask] = useState(false);
@@ -55,19 +55,19 @@ export default function HomePage() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [habitsRes, tasksRes, moodRes, incomeRes, affRes] = await Promise.all([
+      const [habitsRes, tasksRes, moodRes, incomeRes, verseRes] = await Promise.all([
         fetch("/api/habits", { cache: "no-store" }),
         fetch("/api/tasks", { cache: "no-store" }),
         fetch("/api/mood", { cache: "no-store" }),
         fetch("/api/income", { cache: "no-store" }),
-        fetch("/api/affirmations", { cache: "no-store" }),
+        fetch("/api/verse", { cache: "no-store" }),
       ]);
-      const [habitsData, tasksData, moodData, incomeData, affData] = await Promise.all([
+      const [habitsData, tasksData, moodData, incomeData, verseData] = await Promise.all([
         habitsRes.json(),
         tasksRes.json(),
         moodRes.json(),
         incomeRes.json(),
-        affRes.json(),
+        verseRes.json(),
       ]);
       setHabits(habitsData.habits || []);
       setCompletedHabits(habitsData.completedToday || []);
@@ -75,7 +75,7 @@ export default function HomePage() {
       setMood(moodData.mood);
       if (moodData.mood?.note) setMoodNote(moodData.mood.note);
       setTodayIncome(parseFloat(incomeData.todayTotal?.today_net || "0"));
-      if (affData.daily) setAffirmation(affData.daily);
+      if (verseData.verse) setVerse(verseData.verse);
       setDbReady(true);
     } catch {
       // db not connected yet
@@ -261,7 +261,7 @@ export default function HomePage() {
               {greeting}, Mabel ✨
             </h1>
             <p className="text-sm italic mt-2 max-w-sm" style={{ color: "var(--text-mid)" }}>
-              &ldquo;{affirmation || "I am magnetic, brilliant, and completely unstoppable."}&rdquo;
+              &ldquo;{verse?.text || "The LORD is my strength and my shield; my heart trusts in him."}&rdquo;
             </p>
           </div>
           <div className="text-3xl md:text-4xl ml-4 float select-none">🦋</div>
@@ -527,23 +527,23 @@ export default function HomePage() {
           />
         </div>
 
-        {/* Affirmation */}
+        {/* Bible Verse */}
         <div className="card card-lavender px-5 py-4 flex flex-col justify-between">
           <div className="flex items-center gap-2 mb-3">
-            <Sparkles size={18} style={{ color: "var(--lavender)" }} />
+            <BookOpen size={18} style={{ color: "var(--lavender)" }} />
             <h2 className="font-display font-bold italic text-xl" style={{ color: "var(--text-dark)" }}>
-              Daily Affirmation
+              Daily Bible Verse
             </h2>
           </div>
 
           <div className="flex-1 flex items-center">
             <p className="font-display font-bold italic text-xl leading-snug" style={{ color: "var(--text-mid)" }}>
-              &ldquo;{affirmation || "I am in my boss era and nothing can stop my glow up."}&rdquo;
+              &ldquo;{verse?.text || "The LORD is my strength and my shield; my heart trusts in him."}&rdquo;
             </p>
           </div>
 
           <p className="text-xs mt-4" style={{ color: "var(--text-soft)" }}>
-            ✦ rotates daily · your personal mantras
+            ✦ {verse?.ref || "Psalm 28:7"} · rotates daily
           </p>
         </div>
       </div>
