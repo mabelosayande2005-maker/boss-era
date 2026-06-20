@@ -41,11 +41,12 @@ export default function HomePage() {
   const [calLoading, setCalLoading] = useState(false);
   const [syncingTask, setSyncingTask] = useState<number | null>(null);
   const [syncedTasks, setSyncedTasks] = useState<Set<number>>(new Set());
-  const [syncingHabits, setSyncingHabits] = useState(false);
-  const [habitsSynced, setHabitsSynced] = useState(false);
   const [calBanner, setCalBanner] = useState<"connected" | "error" | null>(null);
 
   const today = todayISO();
+  // Per-day localStorage key — automatically stale tomorrow (different date = different key)
+  const syncedKey = `cal_synced_tasks_${today}`;
+
   const greeting = getGreeting();
   const dayName = format(new Date(), "EEEE");
   const dateDisplay = format(new Date(), "d MMMM yyyy");
@@ -99,6 +100,12 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchCalendar();
+    // Restore persisted sync state from localStorage (cleared automatically next day via key)
+    try {
+      const saved = localStorage.getItem(syncedKey);
+      if (saved) setSyncedTasks(new Set(JSON.parse(saved) as number[]));
+    } catch { /* localStorage unavailable */ }
+
     // Check for OAuth callback result in URL
     const params = new URLSearchParams(window.location.search);
     if (params.get("calendar_connected") === "1") {
@@ -108,7 +115,7 @@ export default function HomePage() {
       setCalBanner("error");
       window.history.replaceState({}, "", "/");
     }
-  }, [fetchCalendar]);
+  }, [fetchCalendar, syncedKey]);
 
   const toggleHabit = async (habitId: number) => {
     const res = await fetch("/api/habits", {
@@ -165,7 +172,7 @@ export default function HomePage() {
   };
 
   const syncTaskToCalendar = async (task: Task) => {
-    if (syncingTask === task.id) return;
+    if (syncingTask === task.id || syncedTasks.has(task.id)) return;
     setSyncingTask(task.id);
     try {
       const res = await fetch("/api/calendar/sync", {
@@ -174,7 +181,11 @@ export default function HomePage() {
         body: JSON.stringify({ title: task.title, date: today, description: `Task from Boss Era${task.stream && task.stream !== "admin" ? ` · ${task.stream}` : ""}` }),
       });
       if (res.ok) {
-        setSyncedTasks(prev => new Set([...prev, task.id]));
+        setSyncedTasks(prev => {
+          const next = new Set([...prev, task.id]);
+          try { localStorage.setItem(syncedKey, JSON.stringify([...next])); } catch { /* ignore */ }
+          return next;
+        });
       }
     } catch { /* best-effort */ }
     setSyncingTask(null);
@@ -184,22 +195,6 @@ export default function HomePage() {
     await fetch("/api/calendar/disconnect", { method: "POST" });
     setCalConnected(false);
     setCalEvents([]);
-  };
-
-  const syncHabitsToCalendar = async () => {
-    if (syncingHabits || !calConnected) return;
-    setSyncingHabits(true);
-    await Promise.all(
-      todaysHabits.map(h =>
-        fetch("/api/calendar/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: `${h.emoji} ${h.name}`, date: today, description: "Habit from Boss Era ✦" }),
-        }).catch(() => null)
-      )
-    );
-    setSyncingHabits(false);
-    setHabitsSynced(true);
   };
 
   const fmtTime = (dt: string | null) => {
@@ -284,19 +279,7 @@ export default function HomePage() {
             <h2 className="font-display font-bold italic text-xl" style={{ color: "var(--text-dark)" }}>
               Today&apos;s Habits
             </h2>
-            {calConnected && todaysHabits.length > 0 && (
-              <button
-                onClick={syncHabitsToCalendar}
-                disabled={syncingHabits || habitsSynced}
-                title="Sync all today's habits to Google Calendar"
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all disabled:opacity-40"
-                style={{ background: habitsSynced ? "rgba(184,212,200,0.3)" : "var(--cream-dark)", color: habitsSynced ? "var(--sage)" : "var(--text-soft)", border: "1.5px solid rgba(143,173,160,0.2)" }}
-              >
-                <Calendar size={10} />
-                {habitsSynced ? "Synced" : syncingHabits ? "…" : "Sync"}
-              </button>
-            )}
-            <div className={`${calConnected ? "" : "ml-auto"} progress-track flex-1 max-w-[80px]`}>
+            <div className="ml-auto progress-track flex-1 max-w-[80px]">
               <div
                 className="progress-fill"
                 style={{ width: habits.length ? `${(habitsDone.length / habits.length) * 100}%` : "0%" }}

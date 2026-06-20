@@ -19,6 +19,7 @@ export async function POST(req: Request) {
       description?: string;
     };
 
+    // Build start/end objects
     let startObj: { date?: string; dateTime?: string; timeZone?: string };
     let endObj: { date?: string; dateTime?: string; timeZone?: string };
 
@@ -30,13 +31,32 @@ export async function POST(req: Request) {
       startObj = { dateTime: new Date(startMs).toISOString(), timeZone: tz };
       endObj   = { dateTime: new Date(endMs).toISOString(), timeZone: tz };
     } else {
-      // All-day: end is exclusive next day
       const nextDate = new Date(date + "T00:00:00");
       nextDate.setDate(nextDate.getDate() + 1);
       startObj = { date };
       endObj   = { date: nextDate.toISOString().slice(0, 10) };
     }
 
+    // Dedup: search for an existing event with the same title on this date
+    const startOfDay = new Date(date + "T00:00:00").toISOString();
+    const endOfDay   = new Date(date + "T23:59:59").toISOString();
+    const existing = await calendar.events.list({
+      calendarId: "primary",
+      timeMin: startOfDay,
+      timeMax: endOfDay,
+      q: title,
+      singleEvents: true,
+      maxResults: 10,
+    });
+
+    const duplicate = (existing.data.items ?? []).find(
+      e => e.summary?.trim().toLowerCase() === title.trim().toLowerCase()
+    );
+    if (duplicate) {
+      return NextResponse.json({ eventId: duplicate.id, htmlLink: duplicate.htmlLink, duplicate: true });
+    }
+
+    // No duplicate found — create the event
     const res = await calendar.events.insert({
       calendarId: "primary",
       requestBody: {
@@ -51,7 +71,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({ eventId: res.data.id, htmlLink: res.data.htmlLink });
+    return NextResponse.json({ eventId: res.data.id, htmlLink: res.data.htmlLink, duplicate: false });
   } catch (e) {
     console.error("[calendar sync]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
