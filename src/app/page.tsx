@@ -41,11 +41,13 @@ export default function HomePage() {
   const [calLoading, setCalLoading] = useState(false);
   const [syncingTask, setSyncingTask] = useState<number | null>(null);
   const [syncedTasks, setSyncedTasks] = useState<Set<number>>(new Set());
+  const [checkedCalEvents, setCheckedCalEvents] = useState<Set<string>>(new Set());
   const [calBanner, setCalBanner] = useState<"connected" | "error" | null>(null);
 
   const today = todayISO();
-  // Per-day localStorage key — automatically stale tomorrow (different date = different key)
+  // Per-day localStorage keys — stale automatically tomorrow
   const syncedKey = `cal_synced_tasks_${today}`;
+  const checkedEventsKey = `cal_checked_events_${today}`;
 
   const greeting = getGreeting();
   const dayName = format(new Date(), "EEEE");
@@ -100,10 +102,12 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchCalendar();
-    // Restore persisted sync state from localStorage (cleared automatically next day via key)
+    // Restore persisted sync/checked state from localStorage (cleared automatically next day via key)
     try {
       const saved = localStorage.getItem(syncedKey);
       if (saved) setSyncedTasks(new Set(JSON.parse(saved) as number[]));
+      const savedChecked = localStorage.getItem(checkedEventsKey);
+      if (savedChecked) setCheckedCalEvents(new Set(JSON.parse(savedChecked) as string[]));
     } catch { /* localStorage unavailable */ }
 
     // Check for OAuth callback result in URL
@@ -115,7 +119,7 @@ export default function HomePage() {
       setCalBanner("error");
       window.history.replaceState({}, "", "/");
     }
-  }, [fetchCalendar, syncedKey]);
+  }, [fetchCalendar, syncedKey, checkedEventsKey]);
 
   const toggleHabit = async (habitId: number) => {
     const res = await fetch("/api/habits", {
@@ -160,6 +164,15 @@ export default function HomePage() {
       body: JSON.stringify({ action: "delete", taskId }),
     });
     setTasks(prev => prev.filter(t => t.id !== taskId));
+  };
+
+  const toggleCalEvent = (eventId: string) => {
+    setCheckedCalEvents(prev => {
+      const next = new Set(prev);
+      if (next.has(eventId)) { next.delete(eventId); } else { next.add(eventId); }
+      try { localStorage.setItem(checkedEventsKey, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
   };
 
   const saveMood = async (score: number) => {
@@ -210,6 +223,8 @@ export default function HomePage() {
   const habitsDone = todaysHabits.filter(h => completedHabits.includes(h.id));
   const pendingTasks = tasks.filter(t => !t.completed);
   const doneTasks = tasks.filter(t => t.completed);
+  const pendingCalTasks = calEvents.filter(e => !checkedCalEvents.has(e.id));
+  const doneCalTasks = calEvents.filter(e => checkedCalEvents.has(e.id));
 
   return (
     <div className="space-y-5 py-2">
@@ -256,7 +271,7 @@ export default function HomePage() {
         <div className="grid grid-cols-3 gap-3 mt-5">
           {[
             { label: "habits", value: `${habitsDone.length}/${todaysHabits.length}`, color: "var(--sage)" },
-            { label: "tasks", value: `${doneTasks.length}/${tasks.length}`, color: "var(--rose)" },
+            { label: "tasks", value: `${doneTasks.length + doneCalTasks.length}/${tasks.length + calEvents.length}`, color: "var(--rose)" },
             { label: "today", value: `£${todayIncome.toFixed(0)}`, color: "var(--gold)" },
           ].map(stat => (
             <div key={stat.label} className="rounded-2xl px-3 py-2.5 text-center" style={{ background: "rgba(255,255,255,0.65)" }}>
@@ -397,11 +412,7 @@ export default function HomePage() {
                     className="w-5 h-5 rounded flex items-center justify-center opacity-40 hover:opacity-100 transition-opacity disabled:opacity-20"
                     style={{ color: syncedTasks.has(task.id) ? "var(--sage)" : "var(--text-soft)" }}
                   >
-                    {syncingTask === task.id ? (
-                      <span className="text-[9px]">…</span>
-                    ) : (
-                      <Calendar size={11} />
-                    )}
+                    {syncingTask === task.id ? <span className="text-[9px]">…</span> : <Calendar size={11} />}
                   </button>
                 )}
                 <button
@@ -414,7 +425,24 @@ export default function HomePage() {
               </div>
             ))}
 
-            {doneTasks.length > 0 && (
+            {pendingCalTasks.map(ev => (
+              <div
+                key={ev.id}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl"
+                style={{ background: "rgba(184,212,200,0.12)", border: "1.5px solid rgba(143,173,160,0.22)" }}
+              >
+                <input
+                  type="checkbox"
+                  className="checkbox-fairy"
+                  checked={false}
+                  onChange={() => toggleCalEvent(ev.id)}
+                />
+                <CalendarDays size={13} className="flex-shrink-0" style={{ color: "var(--sage)" }} />
+                <span className="text-sm flex-1" style={{ color: "var(--text-dark)" }}>{ev.title}</span>
+              </div>
+            ))}
+
+            {(doneTasks.length > 0 || doneCalTasks.length > 0) && (
               <>
                 <div className="divider-fairy" />
                 {doneTasks.map(task => (
@@ -432,10 +460,26 @@ export default function HomePage() {
                     <span className="text-sm line-through flex-1" style={{ color: "var(--text-soft)" }}>{task.title}</span>
                   </div>
                 ))}
+                {doneCalTasks.map(ev => (
+                  <div
+                    key={ev.id}
+                    className="flex items-center gap-2.5 px-3 py-2 rounded-xl opacity-50"
+                    style={{ background: "rgba(184,212,200,0.08)" }}
+                  >
+                    <input
+                      type="checkbox"
+                      className="checkbox-fairy"
+                      checked={true}
+                      onChange={() => toggleCalEvent(ev.id)}
+                    />
+                    <CalendarDays size={13} className="flex-shrink-0" style={{ color: "var(--sage)" }} />
+                    <span className="text-sm line-through flex-1" style={{ color: "var(--text-soft)" }}>{ev.title}</span>
+                  </div>
+                ))}
               </>
             )}
 
-            {tasks.length === 0 && !loading && !showAddTask && (
+            {tasks.length === 0 && calEvents.length === 0 && !loading && !showAddTask && (
               <p className="text-sm text-center py-6" style={{ color: "var(--text-soft)" }}>
                 Clear slate ✦ tap + to add tasks
               </p>

@@ -14,6 +14,11 @@ export async function GET() {
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
 
+    console.log("[calendar events] fetching", {
+      timeMin: startOfDay.toISOString(),
+      timeMax: endOfDay.toISOString(),
+    });
+
     const res = await calendar.events.list({
       calendarId: "primary",
       timeMin: startOfDay.toISOString(),
@@ -23,7 +28,22 @@ export async function GET() {
       maxResults: 15,
     });
 
-    const events = (res.data.items ?? []).map(e => ({
+    const raw = res.data.items ?? [];
+    console.log("[calendar events] raw count from Google:", raw.length);
+    raw.forEach((e, i) => {
+      console.log(`[calendar events] item[${i}]`, {
+        id: e.id,
+        summary: e.summary,
+        status: e.status,
+        start: e.start,
+        end: e.end,
+        calendarId: e.organizer?.email,
+        recurringEventId: e.recurringEventId ?? null,
+        iCalUID: e.iCalUID,
+      });
+    });
+
+    const events = raw.map(e => ({
       id: e.id ?? "",
       title: e.summary ?? "Untitled",
       start: e.start?.dateTime ?? e.start?.date ?? null,
