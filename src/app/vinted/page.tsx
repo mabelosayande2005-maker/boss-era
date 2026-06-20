@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { format, parseISO } from "date-fns";
 import { Plus, X, Check, Pencil, ShoppingBag, TrendingUp, Package, Star } from "lucide-react";
-import { upload } from "@vercel/blob/client";
 import { cn } from "@/lib/utils";
 
 // ── types ──────────────────────────────────────────────────────────────────────
@@ -161,12 +160,15 @@ export default function VintedPage() {
     setUploading(true);
     setUploadError(null);
     try {
-      const blob = await upload(
-        `vinted/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, "-")}`,
-        file,
-        { access: "public", handleUploadUrl: "/api/vinted/upload" }
-      );
-      setFPhotoUrl(blob.url);
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/vinted/upload", { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Upload failed" }));
+        throw new Error(err.error ?? "Upload failed");
+      }
+      const { url } = await res.json();
+      setFPhotoUrl(url);
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "Upload failed");
     } finally {

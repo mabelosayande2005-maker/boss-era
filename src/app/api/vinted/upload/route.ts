@@ -1,26 +1,32 @@
+import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
-import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(request: Request): Promise<Response> {
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     return NextResponse.json(
-      { error: "BLOB_READ_WRITE_TOKEN not configured — create a Blob store in Vercel dashboard → Storage" },
+      { error: "BLOB_READ_WRITE_TOKEN not configured — add it to .env.local" },
       { status: 503 }
     );
   }
   try {
-    const body = (await request.json()) as HandleUploadBody;
-    const jsonResponse = await handleUpload({
-      body,
-      request,
-      onBeforeGenerateToken: async () => ({
-        allowedContentTypes: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"],
-        maximumSizeInBytes: 10 * 1024 * 1024,
-      }),
-      onUploadCompleted: async () => {},
-    });
-    return NextResponse.json(jsonResponse);
+    const formData = await request.formData();
+    const file = formData.get("file") as File | null;
+    if (!file) {
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    }
+
+    console.log("[vinted upload] uploading", file.name, file.size, "bytes");
+    const blob = await put(
+      `vinted/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, "-")}`,
+      file,
+      { access: "public", token: process.env.BLOB_READ_WRITE_TOKEN }
+    );
+    console.log("[vinted upload] done →", blob.url);
+    return NextResponse.json({ url: blob.url });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 400 });
+    console.error("[vinted upload]", e);
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
