@@ -86,7 +86,7 @@ function ItemPhoto({
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={url}
+        src={`/api/vinted/photo?url=${encodeURIComponent(url)}`}
         alt={name}
         className={cn(dim, "object-cover rounded-xl flex-shrink-0")}
       />
@@ -561,7 +561,7 @@ export default function VintedPage() {
             <div className="flex items-center gap-3">
               {fPhotoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={fPhotoUrl} alt="preview" className="w-16 h-16 rounded-xl object-cover" />
+                <img src={`/api/vinted/photo?url=${encodeURIComponent(fPhotoUrl)}`} alt="preview" className="w-16 h-16 rounded-xl object-cover" />
               ) : (
                 <div className="w-16 h-16 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={{ background: "var(--cream-dark)", color: "var(--text-soft)", border: "1.5px dashed rgba(200,184,224,0.4)" }}>
