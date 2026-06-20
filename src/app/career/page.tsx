@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, parseISO, isPast, isToday } from "date-fns";
-import { Plus, X, Check, Pencil, ExternalLink, Briefcase, Star } from "lucide-react";
+import { Plus, X, Check, Pencil, ExternalLink, Briefcase, Star, Award } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ── types ──────────────────────────────────────────────────────────────────────
@@ -48,7 +48,14 @@ type Stats = {
   activeBrands: number;
 };
 
-type Tab = "applications" | "brands" | "networking";
+type Skill = {
+  id: number;
+  name: string;
+  source: string | null;
+  date_earned: string | null;
+};
+
+type Tab = "applications" | "brands" | "networking" | "skills";
 
 // ── constants ──────────────────────────────────────────────────────────────────
 const APP_STATUS_META = {
@@ -89,6 +96,7 @@ export default function CareerPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [brands,       setBrands]       = useState<BrandCollab[]>([]);
   const [contacts,     setContacts]     = useState<Contact[]>([]);
+  const [skills,       setSkills]       = useState<Skill[]>([]);
   const [stats,        setStats]        = useState<Stats | null>(null);
   const [tab,          setTab]          = useState<Tab>("applications");
   const [loading,      setLoading]      = useState(true);
@@ -97,6 +105,7 @@ export default function CareerPage() {
   const [showAppForm,     setShowAppForm]     = useState(false);
   const [showBrandForm,   setShowBrandForm]   = useState(false);
   const [showContactForm, setShowContactForm] = useState(false);
+  const [showSkillForm,   setShowSkillForm]   = useState(false);
   const [editApp,         setEditApp]         = useState<Application | null>(null);
   const [editBrand,       setEditBrand]       = useState<BrandCollab | null>(null);
   const [editContact,     setEditContact]     = useState<Contact | null>(null);
@@ -128,6 +137,11 @@ export default function CareerPage() {
   const [fFollowUp, setFFollowUp] = useState("");
   const [fCNotes,   setFCNotes]   = useState("");
 
+  // ── skill form fields ────────────────────────────────────────────────────────
+  const [fSkillName,   setFSkillName]   = useState("");
+  const [fSkillSource, setFSkillSource] = useState("");
+  const [fSkillDate,   setFSkillDate]   = useState("");
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -136,6 +150,7 @@ export default function CareerPage() {
       setApplications(data.applications ?? []);
       setBrands(data.brands             ?? []);
       setContacts(data.contacts          ?? []);
+      setSkills(data.skills              ?? []);
       setStats(data.stats                ?? null);
     } catch {}
     setLoading(false);
@@ -266,6 +281,26 @@ export default function CareerPage() {
     await fetch("/api/career", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete-contact", id }) });
   };
 
+  // ── skill CRUD ────────────────────────────────────────────────────────────────
+  const openAddSkill = () => {
+    setFSkillName(""); setFSkillSource(""); setFSkillDate("");
+    setShowSkillForm(true);
+  };
+  const saveSkill = async () => {
+    if (!fSkillName.trim()) return;
+    const res = await fetch("/api/career", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "add-skill", name: fSkillName, source: fSkillSource, dateEarned: fSkillDate }),
+    });
+    const data = await res.json();
+    if (data.skill) setSkills((p) => [data.skill, ...p]);
+    setShowSkillForm(false);
+  };
+  const deleteSkill = async (id: number) => {
+    setSkills((p) => p.filter((s) => s.id !== id));
+    await fetch("/api/career", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete-skill", id }) });
+  };
+
   const activeApps  = applications.filter((a) => !["rejected","withdrawn"].includes(a.status));
   const archiveApps = applications.filter((a) =>  ["rejected","withdrawn"].includes(a.status));
 
@@ -284,10 +319,10 @@ export default function CareerPage() {
             </h1>
           </div>
           <button className="btn-primary flex items-center gap-1.5" onClick={
-            tab === "applications" ? openAddApp : tab === "brands" ? openAddBrand : openAddContact
+            tab === "applications" ? openAddApp : tab === "brands" ? openAddBrand : tab === "networking" ? openAddContact : openAddSkill
           }>
             <Plus size={14} />
-            {tab === "applications" ? "Add application" : tab === "brands" ? "Add brand" : "Add contact"}
+            {tab === "applications" ? "Add application" : tab === "brands" ? "Add brand" : tab === "networking" ? "Add contact" : "Add skill"}
           </button>
         </div>
 
@@ -315,6 +350,7 @@ export default function CareerPage() {
           { key: "applications", label: "Applications",   emoji: "📨", count: activeApps.length },
           { key: "brands",       label: "Brand Collabs",  emoji: "✨", count: brands.filter(b => b.status !== "archived").length },
           { key: "networking",   label: "Networking",     emoji: "🤝", count: contacts.length },
+          { key: "skills",       label: "Skills",         emoji: "🎓", count: skills.length },
         ] as const).map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={cn("nav-item flex items-center gap-1.5 text-sm", tab === t.key && "active")}>
@@ -437,6 +473,55 @@ export default function CareerPage() {
               onSave={saveContact}
               onDelete={editContact ? () => { deleteContact(editContact.id); setShowContactForm(false); } : undefined}
               onCancel={() => { setShowContactForm(false); setEditContact(null); }}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── SKILLS / CERTIFICATES ─────────────────────────────────────────── */}
+      {tab === "skills" && (
+        <div className="space-y-3">
+          {loading ? (
+            <div className="space-y-2">{[1,2].map(i => <div key={i} className="h-14 rounded-2xl animate-pulse" style={{ background: "var(--cream-dark)" }} />)}</div>
+          ) : skills.length === 0 && !showSkillForm ? (
+            <EmptyState emoji="🎓" title="No skills added yet"
+              body="Log certificates, courses, and skills you've earned."
+              cta="Add first skill" onCta={openAddSkill} />
+          ) : (
+            <div className="space-y-2">
+              {skills.map((s) => (
+                <div key={s.id} className="card flex items-center gap-3 px-4 py-3.5 group">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ background: "rgba(237,232,245,0.8)", color: "var(--lavender)" }}>
+                    <Award size={15} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm leading-tight truncate" style={{ color: "var(--text-dark)" }}>{s.name}</p>
+                    {(s.source || s.date_earned) && (
+                      <p className="text-xs mt-0.5" style={{ color: "var(--text-soft)" }}>
+                        {[s.source, s.date_earned ? format(parseISO(s.date_earned), "MMM yyyy") : null].filter(Boolean).join(" · ")}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => deleteSkill(s.id)}
+                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity flex-shrink-0"
+                    aria-label="Delete"
+                  >
+                    <X size={14} style={{ color: "var(--text-soft)" }} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {showSkillForm && (
+            <SkillForm
+              name={fSkillName} setName={setFSkillName}
+              source={fSkillSource} setSource={setFSkillSource}
+              dateEarned={fSkillDate} setDateEarned={setFSkillDate}
+              onSave={saveSkill}
+              onCancel={() => setShowSkillForm(false)}
             />
           )}
         </div>
@@ -868,6 +953,48 @@ function ContactForm({
             <X size={12} /> Delete
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── skill form ─────────────────────────────────────────────────────────────────
+function SkillForm({ name, setName, source, setSource, dateEarned, setDateEarned, onSave, onCancel }: {
+  name: string; setName: (v: string) => void;
+  source: string; setSource: (v: string) => void;
+  dateEarned: string; setDateEarned: (v: string) => void;
+  onSave: () => void; onCancel: () => void;
+}) {
+  return (
+    <div className="card px-5 py-5" style={{ border: "1.5px solid rgba(200,184,224,0.4)" }}>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-display font-bold italic text-xl" style={{ color: "var(--text-dark)" }}>
+          Add skill / certificate ✦
+        </h2>
+        <button onClick={onCancel} className="w-8 h-8 rounded-full flex items-center justify-center"
+          style={{ background: "var(--cream-dark)", color: "var(--text-soft)" }}><X size={14} /></button>
+      </div>
+      <div className="grid md:grid-cols-3 gap-3">
+        <div>
+          <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Name *</label>
+          <input autoFocus className="input-fairy" placeholder="e.g. Google Analytics, AWS, Python"
+            value={name} onChange={e => setName(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && onSave()} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>From</label>
+          <input className="input-fairy" placeholder="e.g. Coursera, LinkedIn Learning"
+            value={source} onChange={e => setSource(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Date earned</label>
+          <input type="date" className="input-fairy" value={dateEarned} onChange={e => setDateEarned(e.target.value)} />
+        </div>
+      </div>
+      <div className="flex gap-3 mt-4">
+        <button className="btn-primary flex-1" onClick={onSave}>
+          <Check size={14} className="inline mr-1" />Add skill ✦
+        </button>
       </div>
     </div>
   );

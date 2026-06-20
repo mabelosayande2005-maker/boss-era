@@ -47,10 +47,23 @@ async function ensureTables() {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS skills_certificates (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      source TEXT,
+      date_earned DATE,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
 }
 
 function normApp(a: Record<string, unknown>): Record<string, unknown> {
   return { ...a, deadline: norm(a.deadline), date_applied: norm(a.date_applied) };
+}
+
+function normSkill(s: Record<string, unknown>): Record<string, unknown> {
+  return { ...s, date_earned: norm(s.date_earned) };
 }
 
 function normContact(c: Record<string, unknown>) {
@@ -86,6 +99,9 @@ export async function GET() {
     const contacts = await sql`
       SELECT * FROM networking ORDER BY follow_up_date ASC NULLS LAST, created_at DESC
     `;
+    const skills = await sql`
+      SELECT * FROM skills_certificates ORDER BY date_earned DESC NULLS LAST, created_at DESC
+    `;
 
     const normApps = applications.map(a => normApp(a as Record<string, unknown>));
     const stats = {
@@ -101,11 +117,12 @@ export async function GET() {
       applications: normApps,
       brands,
       contacts: contacts.map(c => normContact(c as Record<string, unknown>)),
+      skills: skills.map(s => normSkill(s as Record<string, unknown>)),
       stats,
     });
   } catch (e) {
     console.error("[career GET]", e);
-    return NextResponse.json({ applications: [], brands: [], contacts: [], stats: {}, error: String(e) }, { status: 500 });
+    return NextResponse.json({ applications: [], brands: [], contacts: [], skills: [], stats: {}, error: String(e) }, { status: 500 });
   }
 }
 
@@ -203,6 +220,21 @@ export async function POST(req: Request) {
 
     if (action === "delete-contact") {
       await sql`DELETE FROM networking WHERE id = ${id}`;
+      return NextResponse.json({ deleted: true });
+    }
+
+    if (action === "add-skill") {
+      const { name, source, dateEarned } = body;
+      const [skill] = await sql`
+        INSERT INTO skills_certificates (name, source, date_earned)
+        VALUES (${name}, ${source || null}, ${dateEarned || null})
+        RETURNING *
+      `;
+      return NextResponse.json({ skill: normSkill(skill as Record<string, unknown>) });
+    }
+
+    if (action === "delete-skill") {
+      await sql`DELETE FROM skills_certificates WHERE id = ${id}`;
       return NextResponse.json({ deleted: true });
     }
 
