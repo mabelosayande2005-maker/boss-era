@@ -44,6 +44,43 @@ function formatGBP(val: string | null | number): string {
   return `£${n.toFixed(2)}`;
 }
 
+// ── UK tax year helpers ───────────────────────────────────────────────────────
+// UK tax year runs 6 April → 5 April. Returns e.g. "2025/26".
+function getTaxYear(dateStr: string | null): string | null {
+  if (!dateStr) return null;
+  try {
+    const d = parseISO(dateStr);
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1; // 1–12
+    const day = d.getDate();
+    const afterStart = month > 4 || (month === 4 && day >= 6);
+    const start = afterStart ? year : year - 1;
+    return `${start}/${String(start + 1).slice(2)}`;
+  } catch { return null; }
+}
+
+function getCurrentTaxYear(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const day = now.getDate();
+  const afterStart = month > 4 || (month === 4 && day >= 6);
+  const start = afterStart ? year : year - 1;
+  return `${start}/${String(start + 1).slice(2)}`;
+}
+
+// Self Assessment new-registrant deadline: 5 October after the tax year ends.
+function getSADeadline(taxYear: string): string {
+  const start = parseInt(taxYear.split("/")[0]);
+  return `5 October ${start + 1}`;
+}
+
+// Human-readable tax year span, e.g. "6 Apr 2026 – 5 Apr 2027"
+function taxYearSpan(taxYear: string): string {
+  const start = parseInt(taxYear.split("/")[0]);
+  return `6 Apr ${start} – 5 Apr ${start + 1}`;
+}
+
 export default function IncomePage() {
   const [entries, setEntries] = useState<IncomeEntry[]>([]);
   const [totals, setTotals] = useState<Totals>({ total_net: "0", total_gross: "0" });
@@ -145,6 +182,25 @@ export default function IncomePage() {
   const totalNet = parseFloat(totals.total_net || "0");
   const goalProgress = Math.min(100, (totalNet / SUMMER_GOAL) * 100);
   const summerProg = summerProgress();
+
+  // ── tax year totals (derived from loaded entries, no extra fetch) ──────────
+  const currentTaxYear = getCurrentTaxYear();
+  const taxYearMap = new Map<string, { label: string; gross: number; net: number; count: number; isCurrent: boolean }>();
+  for (const entry of entries) {
+    // Use work_date first; fall back to pay_date. Skip entirely if neither.
+    const dateStr = entry.work_date || entry.pay_date;
+    const ty = getTaxYear(dateStr);
+    if (!ty) continue;
+    const existing = taxYearMap.get(ty) ?? { label: ty, gross: 0, net: 0, count: 0, isCurrent: ty === currentTaxYear };
+    // Use gross if available; if null, fall back to net (means no platform fees recorded)
+    existing.gross += parseFloat(entry.gross ?? entry.net ?? "0") || 0;
+    existing.net   += parseFloat(entry.net ?? "0") || 0;
+    existing.count += 1;
+    taxYearMap.set(ty, existing);
+  }
+  const taxYearRows = Array.from(taxYearMap.values()).sort((a, b) => b.label.localeCompare(a.label));
+  const currentTYData = taxYearRows.find(r => r.isCurrent) ?? null;
+  const TRADING_ALLOWANCE = 1000;
 
   return (
     <div className="space-y-5 py-2">
@@ -269,6 +325,142 @@ export default function IncomePage() {
           </div>
         </div>
       )}
+
+      {/* ── Tax Year Earnings Tracker ─────────────────────────────────── */}
+      <div className="card px-5 py-4">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-lg">📋</span>
+          <h2 className="font-display font-bold italic text-xl" style={{ color: "var(--text-dark)" }}>
+            Tax Year Earnings
+          </h2>
+          <span className="ml-auto tag tag-sage" style={{ fontSize: "10px" }}>£1,000 Trading Allowance</span>
+        </div>
+        <p className="text-xs mb-4" style={{ color: "var(--text-soft)" }}>
+          Tracks gross income per UK tax year (6 Apr–5 Apr) against the HMRC trading allowance.
+        </p>
+
+        {/* Warning banner — shown when current tax year crosses £1,000 */}
+        {currentTYData && currentTYData.gross >= TRADING_ALLOWANCE && (
+          <div
+            className="rounded-xl px-4 py-3.5 mb-4 flex gap-3 items-start"
+            style={{ background: "rgba(212,168,83,0.12)", border: "1.5px solid rgba(212,168,83,0.55)" }}
+          >
+            <span className="text-2xl flex-shrink-0 mt-0.5">⚠️</span>
+            <div className="flex-1">
+              <p className="text-sm font-bold leading-snug" style={{ color: "#a07020" }}>
+                You&apos;ve exceeded the £1,000 trading allowance in {currentTYData.label}
+              </p>
+              <p className="text-xs mt-1 leading-relaxed" style={{ color: "var(--text-mid)" }}>
+                Your gross earnings this tax year are{" "}
+                <span className="font-semibold">{formatGBP(currentTYData.gross)}</span> — £{(currentTYData.gross - TRADING_ALLOWANCE).toFixed(2)} above the threshold.
+                You may need to register for Self Assessment with HMRC.
+                The deadline to register for {currentTYData.label} is{" "}
+                <span className="font-semibold">{getSADeadline(currentTYData.label)}</span>.
+              </p>
+              <a
+                href="https://www.gov.uk/register-for-self-assessment"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-semibold mt-2"
+                style={{ color: "#a07020", textDecoration: "underline" }}
+              >
+                Register for Self Assessment on gov.uk →
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Approaching warning — between £800 and £999 */}
+        {currentTYData && currentTYData.gross >= 800 && currentTYData.gross < TRADING_ALLOWANCE && (
+          <div
+            className="rounded-xl px-4 py-3 mb-4 flex gap-2.5 items-start"
+            style={{ background: "rgba(143,173,160,0.12)", border: "1.5px solid rgba(143,173,160,0.4)" }}
+          >
+            <span className="text-lg flex-shrink-0">📌</span>
+            <p className="text-xs leading-relaxed" style={{ color: "var(--text-mid)" }}>
+              You&apos;re <span className="font-semibold">£{(TRADING_ALLOWANCE - currentTYData.gross).toFixed(2)} away</span> from the £1,000 trading allowance in {currentTYData.label}. Keep an eye on this — once you cross £1,000 gross you&apos;ll need to register for Self Assessment.
+            </p>
+          </div>
+        )}
+
+        {taxYearRows.length === 0 ? (
+          <p className="text-sm text-center py-4" style={{ color: "var(--text-soft)" }}>
+            No dated income entries yet — add a work date or pay date when logging income ✦
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {taxYearRows.map(ty => {
+              const pct = Math.min(100, (ty.gross / TRADING_ALLOWANCE) * 100);
+              const over = ty.gross >= TRADING_ALLOWANCE;
+              const near = !over && ty.gross >= 800;
+              const barColor = over ? "#d4a853" : near ? "var(--sage)" : "var(--sage-light)";
+              return (
+                <div key={ty.label}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-bold" style={{ color: "var(--text-dark)" }}>
+                        {ty.label}
+                      </span>
+                      <span className="text-xs" style={{ color: "var(--text-soft)" }}>
+                        {taxYearSpan(ty.label)}
+                      </span>
+                      {ty.isCurrent && (
+                        <span
+                          className="tag tag-sage"
+                          style={{ fontSize: "10px", padding: "1px 7px" }}
+                        >
+                          current
+                        </span>
+                      )}
+                      {over && (
+                        <span
+                          className="tag"
+                          style={{ fontSize: "10px", padding: "1px 7px", background: "rgba(212,168,83,0.15)", color: "var(--gold)", border: "1px solid rgba(212,168,83,0.4)" }}
+                        >
+                          ⚠️ over limit
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-right flex-shrink-0 ml-2">
+                      <span className="text-sm font-bold" style={{ color: over ? "var(--gold)" : "var(--text-dark)" }}>
+                        {formatGBP(ty.gross)}
+                      </span>
+                      <span className="text-xs ml-1" style={{ color: "var(--text-soft)" }}>gross</span>
+                    </div>
+                  </div>
+
+                  {/* Progress bar toward £1,000 */}
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="flex-1 progress-track" style={{ height: "6px" }}>
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${pct}%`, background: barColor }}
+                      />
+                    </div>
+                    <span className="text-xs tabular-nums flex-shrink-0" style={{ color: "var(--text-soft)", minWidth: "72px", textAlign: "right" }}>
+                      {pct.toFixed(0)}% of £1,000
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between text-xs" style={{ color: "var(--text-soft)" }}>
+                    <span>{ty.count} {ty.count === 1 ? "entry" : "entries"} · net {formatGBP(ty.net)}</span>
+                    {over
+                      ? <span style={{ color: "var(--gold)", fontWeight: 500 }}>£{(ty.gross - TRADING_ALLOWANCE).toFixed(0)} over allowance</span>
+                      : <span>£{(TRADING_ALLOWANCE - ty.gross).toFixed(0)} under allowance</span>
+                    }
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <p className="text-xs mt-5 pt-3 leading-relaxed" style={{ color: "var(--text-soft)", borderTop: "1px solid rgba(200,184,224,0.2)" }}>
+          ✦ Based on gross income (or net if gross not recorded) from entries with a work or pay date.
+          The £1,000 <a href="https://www.gov.uk/guidance/tax-free-allowances-on-property-and-trading-income" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>trading allowance</a> covers self-employed / side-hustle income only — PAYE employment income is taxed separately by your employer.
+          This is informational only; check with an accountant for your specific situation.
+        </p>
+      </div>
 
       {/* Add / Edit form */}
       {showForm && (
