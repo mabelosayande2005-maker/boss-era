@@ -39,7 +39,7 @@ export async function GET(req: Request) {
       const items = await sql`
         SELECT * FROM content_items
         WHERE scheduled_date = ${date}::date
-          AND brand IN ('Personal TikTok', 'StudyGlow')
+          AND brand IN ('Personal TikTok', 'StudyGlow', 'Boss Era')
         ORDER BY created_at ASC
       ` as Record<string, unknown>[];
       return NextResponse.json({ items: items.map(normItem) });

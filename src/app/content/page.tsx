@@ -19,11 +19,11 @@ type ContentItem = {
   notes: string | null;
 };
 
-type BrandFilter = "All" | "Personal TikTok" | "StudyGlow";
+type BrandFilter = "All" | "Personal TikTok" | "StudyGlow" | "Boss Era";
 type ActiveView  = "calendar" | "ideas";
 
 // ── constants ─────────────────────────────────────────────────────────────────
-const BRANDS    = ["Personal TikTok", "StudyGlow"] as const;
+const BRANDS    = ["Personal TikTok", "StudyGlow", "Boss Era"] as const;
 const PLATFORMS = ["TikTok", "Instagram", "YouTube Shorts", "Pinterest"] as const;
 const STATUSES  = ["idea", "filmed", "edited", "posted"] as const;
 type Status = typeof STATUSES[number];
@@ -38,6 +38,7 @@ const STATUS_META: Record<Status, { label: string; color: string; bg: string; em
 const BRAND_META: Record<string, { color: string; bg: string; tag: string; emoji: string }> = {
   "Personal TikTok": { color: "#e8b4b8", bg: "var(--rose-pale)",     tag: "tag-rose",     emoji: "🎵" },
   "StudyGlow":       { color: "#c8b8e0", bg: "var(--lavender-pale)", tag: "tag-lavender", emoji: "✨" },
+  "Boss Era":        { color: "#d4a853", bg: "#fdf8ec",               tag: "tag-gold",     emoji: "👑" },
 };
 
 function weekMonday(d: Date) {
@@ -655,14 +656,14 @@ export default function ContentPage() {
 
           <div className="grid md:grid-cols-2 gap-3">
             {/* Brand */}
-            <div>
+            <div className="md:col-span-2">
               <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-soft)" }}>Brand</label>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 {BRANDS.map((b) => (
                   <button
                     key={b}
                     onClick={() => setFBrand(b)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-sm font-medium transition-all"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all"
                     style={{
                       background: fBrand === b ? BRAND_META[b].bg : "rgba(250,246,240,0.8)",
                       color: fBrand === b ? BRAND_META[b].color : "var(--text-soft)",
@@ -804,7 +805,7 @@ function QuickAddIdea({
       style={{ background: "rgba(255,255,255,0.8)" }}
     >
       <div className="flex-1">
-        <div className="flex gap-1.5 mb-2">
+        <div className="flex gap-1.5 mb-2 flex-wrap">
           {BRANDS.map((b) => (
             <button
               key={b}
