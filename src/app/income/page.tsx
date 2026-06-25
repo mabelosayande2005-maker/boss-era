@@ -30,8 +30,27 @@ type PayslipEntry = {
   notes: string | null;
 };
 
+type SEEntry = {
+  id: number;
+  source: string;
+  entry_date: string | null;
+  gross_amount: string | null;
+  expenses: string | null;
+  net_amount: string | null;
+  notes: string | null;
+};
+
 type BySource = { source: string; total: string };
 type Totals = { total_net: string; total_gross: string };
+
+const SE_SOURCES = [
+  { value: "Vinted",      emoji: "👗" },
+  { value: "TikTok Shop", emoji: "🛍️" },
+  { value: "UGC",         emoji: "🎬" },
+  { value: "Brand Deal",  emoji: "✨" },
+  { value: "Tutoring",    emoji: "📚" },
+  { value: "Other",       emoji: "💰" },
+];
 
 const SOURCE_EMOJI: Record<string, string> = {
   Stint: "⚡",
@@ -87,6 +106,11 @@ export default function IncomePage() {
   const [editPayslip, setEditPayslip] = useState<PayslipEntry | null>(null);
   const [expandedPayslip, setExpandedPayslip] = useState<number | null>(null);
 
+  const [seEntries, setSEEntries] = useState<SEEntry[]>([]);
+  const [showSEForm, setShowSEForm] = useState(false);
+  const [editSEEntry, setEditSEEntry] = useState<SEEntry | null>(null);
+  const [expandedSEEntry, setExpandedSEEntry] = useState<number | null>(null);
+
   const [form, setForm] = useState({
     source: "Stint",
     sourceType: "Self-Employed",
@@ -110,6 +134,15 @@ export default function IncomePage() {
     notes: "",
   });
 
+  const [seForm, setSEForm] = useState({
+    source: "Vinted",
+    entryDate: "",
+    grossAmount: "",
+    expenses: "",
+    netAmount: "",
+    notes: "",
+  });
+
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch("/api/income");
@@ -130,10 +163,19 @@ export default function IncomePage() {
     } catch {}
   }, []);
 
+  const fetchSEEntries = useCallback(async () => {
+    try {
+      const res = await fetch("/api/se", { cache: "no-store" });
+      const data = await res.json();
+      setSEEntries(data.entries || []);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     fetchData();
     fetchPayslips();
-  }, [fetchData, fetchPayslips]);
+    fetchSEEntries();
+  }, [fetchData, fetchPayslips, fetchSEEntries]);
 
   const handleFormChange = (field: string, value: string) => {
     setForm(prev => {
@@ -149,6 +191,18 @@ export default function IncomePage() {
 
   const handlePayFormChange = (field: string, value: string) => {
     setPayForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSEFormChange = (field: string, value: string) => {
+    setSEForm(prev => {
+      const updated = { ...prev, [field]: value };
+      if (field === "grossAmount" || field === "expenses") {
+        const g = parseFloat(updated.grossAmount) || 0;
+        const e = parseFloat(updated.expenses) || 0;
+        updated.netAmount = g > 0 ? (g - e).toFixed(2) : "";
+      }
+      return updated;
+    });
   };
 
   const openAdd = () => {
@@ -260,27 +314,76 @@ export default function IncomePage() {
     fetchPayslips();
   };
 
+  const openAddSE = () => {
+    setEditSEEntry(null);
+    setSEForm({ source: "Vinted", entryDate: "", grossAmount: "", expenses: "", netAmount: "", notes: "" });
+    setShowSEForm(true);
+  };
+
+  const openEditSE = (entry: SEEntry) => {
+    setEditSEEntry(entry);
+    setSEForm({
+      source: entry.source,
+      entryDate: entry.entry_date?.split("T")[0] || "",
+      grossAmount: entry.gross_amount || "",
+      expenses: entry.expenses || "",
+      netAmount: entry.net_amount || "",
+      notes: entry.notes || "",
+    });
+    setShowSEForm(true);
+  };
+
+  const saveSEEntry = async () => {
+    if (!seForm.source) return;
+    const payload = {
+      action: editSEEntry ? "update" : "add",
+      id: editSEEntry?.id,
+      source: seForm.source,
+      entryDate: seForm.entryDate || null,
+      grossAmount: seForm.grossAmount ? parseFloat(seForm.grossAmount) : null,
+      expenses: seForm.expenses ? parseFloat(seForm.expenses) : 0,
+      netAmount: seForm.netAmount ? parseFloat(seForm.netAmount) : (seForm.grossAmount ? parseFloat(seForm.grossAmount) : null),
+      notes: seForm.notes || null,
+    };
+    await fetch("/api/se", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    setShowSEForm(false);
+    setEditSEEntry(null);
+    fetchSEEntries();
+  };
+
+  const deleteSEEntry = async (id: number) => {
+    await fetch("/api/se", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", id }),
+    });
+    fetchSEEntries();
+  };
+
   const totalNet = parseFloat(totals.total_net || "0");
   const goalProgress = Math.min(100, (totalNet / SUMMER_GOAL) * 100);
   const summerProg = summerProgress();
 
-  // ── Self-employment tracker ───────────────────────────────────────────────
+  // ── Tax year helpers ─────────────────────────────────────────────────────
   const TRADING_ALLOWANCE = 1000;
   const currentTaxYear = getCurrentTaxYear();
   const tyStart = parseInt(currentTaxYear.split("/")[0]);
   const tyStartDate = `${tyStart}-04-06`;
   const tyEndDate = `${tyStart + 1}-04-05`;
 
-  let seGross = 0;
-  for (const entry of entries) {
-    if (entry.source_type === "PAYE") continue;
-    const dateStr = entry.work_date || entry.pay_date;
-    if (!dateStr) continue;
-    const d = dateStr.slice(0, 10);
-    if (d >= tyStartDate && d <= tyEndDate) {
-      seGross += parseFloat(entry.gross ?? entry.net ?? "0") || 0;
-    }
+  // ── Self-employment tracker (dedicated SE entries) ────────────────────────
+  const seTaxYear = { gross: 0, net: 0 };
+  for (const entry of seEntries) {
+    const d = entry.entry_date?.slice(0, 10) ?? null;
+    if (!d || d < tyStartDate || d > tyEndDate) continue;
+    seTaxYear.gross += parseFloat(String(entry.gross_amount || "0")) || 0;
+    seTaxYear.net   += parseFloat(String(entry.net_amount   || "0")) || 0;
   }
+  const seGross = seTaxYear.gross;
 
   // ── PAYE tracker (current tax year) ──────────────────────────────────────
   const payeTaxYear = { gross: 0, tax: 0, ni: 0, net: 0 };
@@ -424,22 +527,34 @@ export default function IncomePage() {
           <span className="ml-auto tag tag-sage" style={{ fontSize: "10px" }}>{currentTaxYear}</span>
         </div>
         <p className="text-xs mb-4" style={{ color: "var(--text-soft)" }}>
-          6 Apr {tyStart} – 5 Apr {tyStart + 1} · excludes PAYE employment income
+          6 Apr {tyStart} – 5 Apr {tyStart + 1} · log SE income from Vinted, TikTok, UGC, tutoring, etc.
         </p>
 
-        <div className="flex items-baseline gap-2 mb-4">
-          <span
-            className="font-display font-black italic text-3xl"
-            style={{ color: seGross >= TRADING_ALLOWANCE ? "var(--gold)" : "var(--text-dark)" }}
-          >
-            {formatGBP(seGross)}
-          </span>
-          <span className="text-sm" style={{ color: "var(--text-soft)" }}>SE gross this tax year</span>
-        </div>
+        {/* Current tax year totals */}
+        {seTaxYear.gross > 0 && (
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="rounded-xl px-3 py-2.5 text-center" style={{ background: "rgba(253,248,236,0.8)" }}>
+              <div
+                className="font-bold text-base"
+                style={{ color: seGross >= TRADING_ALLOWANCE ? "var(--gold)" : "var(--text-dark)" }}
+              >
+                {formatGBP(seTaxYear.gross)}
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: "var(--text-soft)" }}>gross this tax year</div>
+            </div>
+            <div className="rounded-xl px-3 py-2.5 text-center" style={{ background: "rgba(253,248,236,0.8)" }}>
+              <div className="font-bold text-base" style={{ color: "var(--sage)" }}>
+                {formatGBP(seTaxYear.net)}
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: "var(--text-soft)" }}>net this tax year</div>
+            </div>
+          </div>
+        )}
 
+        {/* Warning banners */}
         {seGross >= TRADING_ALLOWANCE && (
           <div
-            className="rounded-xl px-4 py-3.5 flex gap-3 items-start"
+            className="rounded-xl px-4 py-3.5 flex gap-3 items-start mb-4"
             style={{ background: "rgba(212,168,83,0.12)", border: "1.5px solid rgba(212,168,83,0.55)" }}
           >
             <span className="text-2xl flex-shrink-0 mt-0.5">⚠️</span>
@@ -448,7 +563,7 @@ export default function IncomePage() {
                 Self Assessment registration required
               </p>
               <p className="text-xs mt-1 leading-relaxed" style={{ color: "var(--text-mid)" }}>
-                Your gross self-employed income this tax year is{" "}
+                Your gross SE income this tax year is{" "}
                 <span className="font-semibold">{formatGBP(seGross)}</span> — £{(seGross - TRADING_ALLOWANCE).toFixed(2)} above the £1,000 trading allowance.
                 Deadline to register: <span className="font-semibold">{getSADeadline(currentTaxYear)}</span>.
               </p>
@@ -467,13 +582,194 @@ export default function IncomePage() {
 
         {seGross >= 800 && seGross < TRADING_ALLOWANCE && (
           <div
-            className="rounded-xl px-4 py-3 flex gap-2.5 items-start"
+            className="rounded-xl px-4 py-3 flex gap-2.5 items-start mb-4"
             style={{ background: "rgba(143,173,160,0.12)", border: "1.5px solid rgba(143,173,160,0.4)" }}
           >
             <span className="text-lg flex-shrink-0">📌</span>
             <p className="text-xs leading-relaxed" style={{ color: "var(--text-mid)" }}>
               You&apos;re <span className="font-semibold">£{(TRADING_ALLOWANCE - seGross).toFixed(2)} away</span> from the £1,000 trading allowance. Once you cross £1,000 gross SE income you&apos;ll need to register for Self Assessment.
             </p>
+          </div>
+        )}
+
+        {/* Entry list */}
+        {seEntries.length === 0 ? (
+          <p className="text-sm text-center py-3 mb-3" style={{ color: "var(--text-soft)" }}>
+            No SE entries logged yet ✦
+          </p>
+        ) : (
+          <div className="space-y-2 mb-4">
+            {seEntries.map(e => (
+              <div key={e.id}>
+                <div
+                  className="flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all"
+                  style={{
+                    background: expandedSEEntry === e.id ? "rgba(143,173,160,0.1)" : "rgba(250,246,240,0.8)",
+                    border: "1.5px solid rgba(200,184,224,0.2)",
+                  }}
+                  onClick={() => setExpandedSEEntry(expandedSEEntry === e.id ? null : e.id)}
+                >
+                  <span className="text-lg">{SOURCE_EMOJI[e.source] || "💰"}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm" style={{ color: "var(--text-dark)" }}>{e.source}</div>
+                    <div className="text-xs" style={{ color: "var(--text-soft)" }}>
+                      {e.entry_date ? format(parseISO(e.entry_date), "d MMM yyyy") : "—"}
+                      {e.notes && ` · ${e.notes}`}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="font-bold text-sm" style={{ color: "var(--gold)" }}>{formatGBP(e.gross_amount)}</div>
+                    <div className="text-xs" style={{ color: "var(--text-soft)" }}>net {formatGBP(e.net_amount)}</div>
+                  </div>
+                  {expandedSEEntry === e.id
+                    ? <ChevronUp size={14} style={{ color: "var(--text-soft)", flexShrink: 0 }} />
+                    : <ChevronDown size={14} style={{ color: "var(--text-soft)", flexShrink: 0 }} />
+                  }
+                </div>
+
+                {expandedSEEntry === e.id && (
+                  <div
+                    className="mx-2 px-4 py-3 rounded-b-xl mb-1 -mt-1"
+                    style={{ background: "rgba(143,173,160,0.07)", border: "1.5px solid rgba(143,173,160,0.2)", borderTop: "none" }}
+                  >
+                    <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                      <div>
+                        <span style={{ color: "var(--text-soft)" }}>Gross: </span>
+                        <span className="font-bold">{formatGBP(e.gross_amount)}</span>
+                      </div>
+                      <div>
+                        <span style={{ color: "var(--text-soft)" }}>Net: </span>
+                        <span className="font-bold" style={{ color: "var(--gold)" }}>{formatGBP(e.net_amount)}</span>
+                      </div>
+                      <div>
+                        <span style={{ color: "var(--text-soft)" }}>Expenses/fees: </span>
+                        <span>{formatGBP(e.expenses)}</span>
+                      </div>
+                      {e.notes && (
+                        <div className="col-span-2">
+                          <span style={{ color: "var(--text-soft)" }}>Notes: </span>
+                          <span>{e.notes}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        className="btn-primary text-xs px-3 py-1"
+                        onClick={() => { openEditSE(e); setExpandedSEEntry(null); }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="flex items-center gap-1 text-xs px-3 py-1 rounded-full transition-all"
+                        style={{ background: "var(--rose-pale)", color: "#b06070", border: "1px solid rgba(232,180,184,0.4)" }}
+                        onClick={() => deleteSEEntry(e.id)}
+                      >
+                        <Trash2 size={11} />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!showSEForm && (
+          <button className="btn-primary flex items-center gap-2 text-sm" onClick={openAddSE}>
+            <Plus size={14} />
+            Add SE Entry
+          </button>
+        )}
+
+        {showSEForm && (
+          <div className="mt-4 pt-4" style={{ borderTop: "1px solid rgba(200,184,224,0.25)" }}>
+            <h3 className="font-display font-bold italic text-lg mb-3" style={{ color: "var(--text-dark)" }}>
+              {editSEEntry ? "Edit Entry" : "Add SE Entry ✦"}
+            </h3>
+            <div className="grid md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Source *</label>
+                <select
+                  className="input-fairy"
+                  value={seForm.source}
+                  onChange={ev => handleSEFormChange("source", ev.target.value)}
+                >
+                  {SE_SOURCES.map(s => (
+                    <option key={s.value} value={s.value}>{s.emoji} {s.value}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Date</label>
+                <input
+                  type="date"
+                  className="input-fairy"
+                  value={seForm.entryDate}
+                  onChange={ev => handleSEFormChange("entryDate", ev.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Gross earned (£)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input-fairy"
+                  placeholder="0.00"
+                  value={seForm.grossAmount}
+                  onChange={ev => handleSEFormChange("grossAmount", ev.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Expenses / fees (£)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input-fairy"
+                  placeholder="0.00"
+                  value={seForm.expenses}
+                  onChange={ev => handleSEFormChange("expenses", ev.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>
+                  Net (£) <span style={{ color: "var(--sage)" }}>— auto-calculated</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input-fairy"
+                  placeholder="0.00"
+                  value={seForm.netAmount}
+                  onChange={ev => handleSEFormChange("netAmount", ev.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Notes</label>
+                <input
+                  className="input-fairy"
+                  placeholder="e.g. 3 Vinted sales, UGC video"
+                  value={seForm.notes}
+                  onChange={ev => handleSEFormChange("notes", ev.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button className="btn-primary flex-1" onClick={saveSEEntry}>
+                {editSEEntry ? "Save changes ✦" : "Add entry ✦"}
+              </button>
+              <button
+                className="btn-primary btn-rose flex-1"
+                onClick={() => { setShowSEForm(false); setEditSEEntry(null); }}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
       </div>
