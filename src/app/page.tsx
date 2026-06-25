@@ -10,16 +10,27 @@ type Task = { id: number; title: string; stream: string; completed: boolean; not
 type Mood = { score: number; note: string } | null;
 type CalEvent = { id: string; title: string; start: string | null; end: string | null; allDay: boolean; htmlLink: string | null };
 type WeeklyGoal = { id: number; text: string };
+type HustleTarget = { id: number; hustle: string; target_text: string; target_count: number; current_count: number };
 
 const MOOD_EMOJIS = ["😢", "😕", "😐", "🙂", "✨"];
 const MOOD_LABELS = ["Rough", "Meh", "Okay", "Good", "Amazing"];
 
+const HUSTLE_OPTIONS = [
+  { value: "Vinted",   label: "Vinted",   tagClass: "tag-gold" },
+  { value: "Content",  label: "Content",  tagClass: "tag-rose" },
+  { value: "UGC",      label: "UGC",      tagClass: "tag-lavender" },
+  { value: "Tutoring", label: "Tutoring", tagClass: "tag-sage" },
+] as const;
+
 const STREAM_COLORS: Record<string, string> = {
   "Personal TikTok": "tag-rose",
-  StudyGlow: "tag-lavender",
-  Vinted: "tag-gold",
-  Skills: "tag-sage",
-  Admin: "tag-sage",
+  StudyGlow:         "tag-lavender",
+  Vinted:            "tag-gold",
+  Content:           "tag-rose",
+  UGC:               "tag-lavender",
+  Tutoring:          "tag-sage",
+  Skills:            "tag-sage",
+  Admin:             "tag-sage",
 };
 
 export default function HomePage() {
@@ -34,9 +45,17 @@ export default function HomePage() {
   const [addingWeeklyGoal, setAddingWeeklyGoal] = useState(false);
   const [todayIncome, setTodayIncome] = useState(0);
   const [newTask, setNewTask] = useState("");
+  const [taskHustle, setTaskHustle] = useState<string | null>(null);
   const [showAddTask, setShowAddTask] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dbReady, setDbReady] = useState(false);
+
+  // Hustle targets
+  const [hustleTargets, setHustleTargets] = useState<HustleTarget[]>([]);
+  const [showAddTarget, setShowAddTarget] = useState(false);
+  const [newTargetHustle, setNewTargetHustle] = useState<string>("Vinted");
+  const [newTargetText, setNewTargetText] = useState("");
+  const [newTargetCount, setNewTargetCount] = useState(1);
 
   // Calendar
   const [calEvents, setCalEvents] = useState<CalEvent[]>([]);
@@ -59,21 +78,23 @@ export default function HomePage() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [habitsRes, tasksRes, moodRes, incomeRes, verseRes, weeklyGoalsRes] = await Promise.all([
+      const [habitsRes, tasksRes, moodRes, incomeRes, verseRes, weeklyGoalsRes, hustleTargetsRes] = await Promise.all([
         fetch("/api/habits", { cache: "no-store" }),
         fetch("/api/tasks", { cache: "no-store" }),
         fetch("/api/mood", { cache: "no-store" }),
         fetch("/api/income", { cache: "no-store" }),
         fetch("/api/verse", { cache: "no-store" }),
         fetch("/api/weekly-goals", { cache: "no-store" }),
+        fetch("/api/hustle-targets", { cache: "no-store" }),
       ]);
-      const [habitsData, tasksData, moodData, incomeData, verseData, weeklyGoalsData] = await Promise.all([
+      const [habitsData, tasksData, moodData, incomeData, verseData, weeklyGoalsData, hustleTargetsData] = await Promise.all([
         habitsRes.json(),
         tasksRes.json(),
         moodRes.json(),
         incomeRes.json(),
         verseRes.json(),
         weeklyGoalsRes.json(),
+        hustleTargetsRes.json(),
       ]);
       setHabits(habitsData.habits || []);
       setCompletedHabits(habitsData.completedToday || []);
@@ -83,6 +104,7 @@ export default function HomePage() {
       setTodayIncome(parseFloat(incomeData.todayTotal?.today_net || "0"));
       if (verseData.verse) setVerse(verseData.verse);
       setWeeklyGoals(weeklyGoalsData.goals || []);
+      setHustleTargets(hustleTargetsData.targets || []);
       setDbReady(true);
     } catch {
       // db not connected yet
@@ -156,12 +178,41 @@ export default function HomePage() {
     const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "add", title: newTask, stream: "admin" }),
+      body: JSON.stringify({ action: "add", title: newTask, stream: taskHustle || "admin" }),
     });
     const data = await res.json();
     if (data.task) setTasks(prev => [...prev, data.task]);
     setNewTask("");
+    setTaskHustle(null);
     setShowAddTask(false);
+  };
+
+  const postHustle = (body: Record<string, unknown>) =>
+    fetch("/api/hustle-targets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+  const addHustleTarget = async () => {
+    if (!newTargetText.trim()) return;
+    const res = await postHustle({ action: "add", hustle: newTargetHustle, targetText: newTargetText.trim(), targetCount: newTargetCount });
+    const data = await res.json();
+    if (data.target) setHustleTargets(prev => [...prev, data.target as HustleTarget]);
+    setNewTargetText("");
+    setNewTargetCount(1);
+    setShowAddTarget(false);
+  };
+
+  const incrementTarget = async (id: number) => {
+    setHustleTargets(prev => prev.map(t => t.id === id ? { ...t, current_count: t.current_count + 1 } : t));
+    await postHustle({ action: "increment", id });
+  };
+
+  const decrementTarget = async (id: number) => {
+    setHustleTargets(prev => prev.map(t => t.id === id ? { ...t, current_count: Math.max(0, t.current_count - 1) } : t));
+    await postHustle({ action: "decrement", id });
+  };
+
+  const deleteHustleTarget = async (id: number) => {
+    await postHustle({ action: "delete", id });
+    setHustleTargets(prev => prev.filter(t => t.id !== id));
   };
 
   const deleteTask = async (taskId: number) => {
@@ -403,16 +454,30 @@ export default function HomePage() {
           </div>
 
           {showAddTask && (
-            <div className="flex gap-2 mb-3">
-              <input
-                autoFocus
-                className="input-fairy flex-1 text-sm"
-                placeholder="What needs doing today?"
-                value={newTask}
-                onChange={e => setNewTask(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") addTask(); if (e.key === "Escape") setShowAddTask(false); }}
-              />
-              <button className="btn-primary text-xs px-3" onClick={addTask}>Add</button>
+            <div className="space-y-2 mb-3">
+              <div className="flex gap-2">
+                <input
+                  autoFocus
+                  className="input-fairy flex-1 text-sm"
+                  placeholder="What needs doing today?"
+                  value={newTask}
+                  onChange={e => setNewTask(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") addTask(); if (e.key === "Escape") { setShowAddTask(false); setTaskHustle(null); } }}
+                />
+                <button className="btn-primary text-xs px-3" onClick={addTask}>Add</button>
+              </div>
+              <div className="flex gap-1.5 flex-wrap">
+                {HUSTLE_OPTIONS.map(h => (
+                  <button
+                    key={h.value}
+                    onClick={() => setTaskHustle(taskHustle === h.value ? null : h.value)}
+                    className={`tag ${h.tagClass} text-xs cursor-pointer transition-all select-none`}
+                    style={{ opacity: taskHustle === null || taskHustle === h.value ? 1 : 0.4, fontWeight: taskHustle === h.value ? 600 : 400 }}
+                  >
+                    {taskHustle === h.value ? `✓ ${h.label}` : h.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -638,6 +703,118 @@ export default function HomePage() {
               </li>
             ))}
           </ul>
+        )}
+      </div>
+
+      {/* Weekly Hustle Targets */}
+      <div className="card px-5 py-4">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-lg">💪</span>
+          <h2 className="font-display font-bold italic text-xl" style={{ color: "var(--text-dark)" }}>
+            Weekly Hustle Targets
+          </h2>
+          <button
+            onClick={() => setShowAddTarget(v => !v)}
+            className="ml-auto w-7 h-7 flex items-center justify-center rounded-full transition-colors hover:opacity-70"
+            style={{ background: "#fdf8ec", color: "var(--gold)", border: "1.5px solid rgba(212,168,83,0.3)" }}
+            aria-label="Add target"
+          >
+            <Plus size={15} />
+          </button>
+        </div>
+
+        {showAddTarget && (
+          <div className="card px-4 py-3 mb-3 space-y-3" style={{ background: "#fdf8ec", border: "1.5px solid rgba(212,168,83,0.25)" }}>
+            <div className="flex gap-1.5 flex-wrap">
+              {HUSTLE_OPTIONS.map(h => (
+                <button
+                  key={h.value}
+                  onClick={() => setNewTargetHustle(h.value)}
+                  className={`tag ${h.tagClass} text-xs cursor-pointer transition-all select-none`}
+                  style={{ fontWeight: newTargetHustle === h.value ? 600 : 400, opacity: newTargetHustle === h.value ? 1 : 0.5 }}
+                >
+                  {newTargetHustle === h.value ? `✓ ${h.label}` : h.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                autoFocus
+                value={newTargetText}
+                onChange={e => setNewTargetText(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") addHustleTarget(); if (e.key === "Escape") setShowAddTarget(false); }}
+                placeholder="e.g. List 5 items, Post 3x…"
+                className="input-fairy flex-1 text-sm"
+              />
+              <input
+                type="number"
+                min={1}
+                max={99}
+                value={newTargetCount}
+                onChange={e => setNewTargetCount(Math.max(1, parseInt(e.target.value) || 1))}
+                className="input-fairy text-sm text-center"
+                style={{ width: "52px" }}
+                title="Goal number"
+              />
+              <button onClick={addHustleTarget} className="btn-primary text-sm px-3">Add</button>
+            </div>
+          </div>
+        )}
+
+        {hustleTargets.length === 0 && !showAddTarget ? (
+          <p className="text-sm text-center py-3" style={{ color: "var(--text-soft)" }}>
+            No hustle targets set for this week ✦
+          </p>
+        ) : (
+          <div className="space-y-2.5">
+            {hustleTargets.map(t => {
+              const pct = Math.min(100, t.target_count > 0 ? Math.round((t.current_count / t.target_count) * 100) : 0);
+              const done = t.current_count >= t.target_count;
+              const tagClass = STREAM_COLORS[t.hustle] || "tag-sage";
+              return (
+                <div
+                  key={t.id}
+                  className="px-3 py-2.5 rounded-xl group space-y-1.5"
+                  style={{ background: done ? "rgba(143,173,160,0.1)" : "rgba(250,246,240,0.8)", border: `1.5px solid ${done ? "rgba(143,173,160,0.3)" : "rgba(212,168,83,0.18)"}` }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`tag ${tagClass} text-xs`}>{t.hustle}</span>
+                    <span className="text-sm flex-1 leading-snug" style={{ color: done ? "var(--text-soft)" : "var(--text-dark)", textDecoration: done ? "line-through" : "none" }}>
+                      {t.target_text}
+                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => decrementTarget(t.id)}
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-sm font-bold transition-colors hover:opacity-70 select-none"
+                        style={{ background: "var(--cream-dark)", color: "var(--text-mid)" }}
+                        disabled={t.current_count === 0}
+                      >−</button>
+                      <span className="text-xs font-semibold tabular-nums" style={{ color: done ? "var(--sage)" : "var(--gold)", minWidth: "32px", textAlign: "center" }}>
+                        {t.current_count}/{t.target_count}
+                      </span>
+                      <button
+                        onClick={() => incrementTarget(t.id)}
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-sm font-bold transition-colors hover:opacity-70 select-none"
+                        style={{ background: done ? "rgba(143,173,160,0.2)" : "rgba(212,168,83,0.15)", color: done ? "var(--sage)" : "var(--gold)" }}
+                      >+</button>
+                    </div>
+                    <button
+                      onClick={() => deleteHustleTarget(t.id)}
+                      className="opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity"
+                    >
+                      <X size={13} style={{ color: "var(--text-soft)" }} />
+                    </button>
+                  </div>
+                  <div className="progress-track" style={{ height: "4px" }}>
+                    <div
+                      className="progress-fill"
+                      style={{ width: `${pct}%`, background: done ? "var(--sage)" : "var(--gold)", transition: "width 0.3s ease" }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
