@@ -34,6 +34,8 @@ export default function Nav() {
   const pathname = usePathname();
   const [showMore, setShowMore] = useState(false);
 
+  if (pathname === "/auth") return null;
+
   // "More" button lights up when the active page is in the overflow list
   const overflowActive = OVERFLOW.some(item => item.href === pathname);
 
