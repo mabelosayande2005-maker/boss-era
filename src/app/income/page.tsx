@@ -8,12 +8,25 @@ import { INCOME_SOURCES, SUMMER_GOAL, summerProgress } from "@/lib/utils";
 type IncomeEntry = {
   id: number;
   source: string;
+  source_type: string | null;
   work_date: string | null;
   pay_date: string | null;
   gross: string | null;
   tax_fees: string | null;
   net: string | null;
   account: string | null;
+  notes: string | null;
+};
+
+type PayslipEntry = {
+  id: number;
+  employer: string;
+  pay_date: string | null;
+  gross_pay: string | null;
+  tax_deducted: string | null;
+  ni_deducted: string | null;
+  tax_code: string | null;
+  net_pay: string | null;
   notes: string | null;
 };
 
@@ -44,21 +57,6 @@ function formatGBP(val: string | null | number): string {
   return `£${n.toFixed(2)}`;
 }
 
-// ── UK tax year helpers ───────────────────────────────────────────────────────
-// UK tax year runs 6 April → 5 April. Returns e.g. "2025/26".
-function getTaxYear(dateStr: string | null): string | null {
-  if (!dateStr) return null;
-  try {
-    const d = parseISO(dateStr);
-    const year = d.getFullYear();
-    const month = d.getMonth() + 1; // 1–12
-    const day = d.getDate();
-    const afterStart = month > 4 || (month === 4 && day >= 6);
-    const start = afterStart ? year : year - 1;
-    return `${start}/${String(start + 1).slice(2)}`;
-  } catch { return null; }
-}
-
 function getCurrentTaxYear(): string {
   const now = new Date();
   const year = now.getFullYear();
@@ -69,16 +67,9 @@ function getCurrentTaxYear(): string {
   return `${start}/${String(start + 1).slice(2)}`;
 }
 
-// Self Assessment new-registrant deadline: 5 October after the tax year ends.
 function getSADeadline(taxYear: string): string {
   const start = parseInt(taxYear.split("/")[0]);
   return `5 October ${start + 1}`;
-}
-
-// Human-readable tax year span, e.g. "6 Apr 2026 – 5 Apr 2027"
-function taxYearSpan(taxYear: string): string {
-  const start = parseInt(taxYear.split("/")[0]);
-  return `6 Apr ${start} – 5 Apr ${start + 1}`;
 }
 
 export default function IncomePage() {
@@ -90,14 +81,32 @@ export default function IncomePage() {
   const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [payslips, setPayslips] = useState<PayslipEntry[]>([]);
+  const [latestTaxCode, setLatestTaxCode] = useState<string | null>(null);
+  const [showPayForm, setShowPayForm] = useState(false);
+  const [editPayslip, setEditPayslip] = useState<PayslipEntry | null>(null);
+  const [expandedPayslip, setExpandedPayslip] = useState<number | null>(null);
+
   const [form, setForm] = useState({
     source: "Stint",
+    sourceType: "Self-Employed",
     workDate: "",
     payDate: "",
     gross: "",
     taxFees: "",
     net: "",
     account: "",
+    notes: "",
+  });
+
+  const [payForm, setPayForm] = useState({
+    employer: "",
+    payDate: "",
+    grossPay: "",
+    taxDeducted: "",
+    niDeducted: "",
+    taxCode: "",
+    netPay: "",
     notes: "",
   });
 
@@ -112,7 +121,19 @@ export default function IncomePage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const fetchPayslips = useCallback(async () => {
+    try {
+      const res = await fetch("/api/paye", { cache: "no-store" });
+      const data = await res.json();
+      setPayslips(data.payslips || []);
+      setLatestTaxCode(data.latestTaxCode ?? null);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    fetchPayslips();
+  }, [fetchData, fetchPayslips]);
 
   const handleFormChange = (field: string, value: string) => {
     setForm(prev => {
@@ -126,9 +147,13 @@ export default function IncomePage() {
     });
   };
 
+  const handlePayFormChange = (field: string, value: string) => {
+    setPayForm(prev => ({ ...prev, [field]: value }));
+  };
+
   const openAdd = () => {
     setEditEntry(null);
-    setForm({ source: "Stint", workDate: "", payDate: "", gross: "", taxFees: "", net: "", account: "", notes: "" });
+    setForm({ source: "Stint", sourceType: "Self-Employed", workDate: "", payDate: "", gross: "", taxFees: "", net: "", account: "", notes: "" });
     setShowForm(true);
   };
 
@@ -136,6 +161,7 @@ export default function IncomePage() {
     setEditEntry(entry);
     setForm({
       source: entry.source,
+      sourceType: entry.source_type || "Self-Employed",
       workDate: entry.work_date?.split("T")[0] || "",
       payDate: entry.pay_date?.split("T")[0] || "",
       gross: entry.gross || "",
@@ -153,6 +179,7 @@ export default function IncomePage() {
       action: editEntry ? "update" : "add",
       id: editEntry?.id,
       source: form.source,
+      sourceType: form.sourceType,
       workDate: form.workDate || null,
       payDate: form.payDate || null,
       gross: form.gross ? parseFloat(form.gross) : null,
@@ -179,28 +206,92 @@ export default function IncomePage() {
     fetchData();
   };
 
+  const openAddPayslip = () => {
+    setEditPayslip(null);
+    setPayForm({ employer: "", payDate: "", grossPay: "", taxDeducted: "", niDeducted: "", taxCode: "", netPay: "", notes: "" });
+    setShowPayForm(true);
+  };
+
+  const openEditPayslip = (ps: PayslipEntry) => {
+    setEditPayslip(ps);
+    setPayForm({
+      employer: ps.employer,
+      payDate: ps.pay_date?.split("T")[0] || "",
+      grossPay: ps.gross_pay || "",
+      taxDeducted: ps.tax_deducted || "",
+      niDeducted: ps.ni_deducted || "",
+      taxCode: ps.tax_code || "",
+      netPay: ps.net_pay || "",
+      notes: ps.notes || "",
+    });
+    setShowPayForm(true);
+  };
+
+  const savePayslip = async () => {
+    if (!payForm.employer.trim()) return;
+    const payload = {
+      action: editPayslip ? "update" : "add",
+      id: editPayslip?.id,
+      employer: payForm.employer.trim(),
+      payDate: payForm.payDate || null,
+      grossPay: payForm.grossPay ? parseFloat(payForm.grossPay) : null,
+      taxDeducted: payForm.taxDeducted ? parseFloat(payForm.taxDeducted) : 0,
+      niDeducted: payForm.niDeducted ? parseFloat(payForm.niDeducted) : 0,
+      taxCode: payForm.taxCode || null,
+      netPay: payForm.netPay ? parseFloat(payForm.netPay) : null,
+      notes: payForm.notes || null,
+    };
+    await fetch("/api/paye", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    setShowPayForm(false);
+    setEditPayslip(null);
+    fetchPayslips();
+  };
+
+  const deletePayslip = async (id: number) => {
+    await fetch("/api/paye", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", id }),
+    });
+    fetchPayslips();
+  };
+
   const totalNet = parseFloat(totals.total_net || "0");
   const goalProgress = Math.min(100, (totalNet / SUMMER_GOAL) * 100);
   const summerProg = summerProgress();
 
-  // ── tax year totals (derived from loaded entries, no extra fetch) ──────────
-  const currentTaxYear = getCurrentTaxYear();
-  const taxYearMap = new Map<string, { label: string; gross: number; net: number; count: number; isCurrent: boolean }>();
-  for (const entry of entries) {
-    // Use work_date first; fall back to pay_date. Skip entirely if neither.
-    const dateStr = entry.work_date || entry.pay_date;
-    const ty = getTaxYear(dateStr);
-    if (!ty) continue;
-    const existing = taxYearMap.get(ty) ?? { label: ty, gross: 0, net: 0, count: 0, isCurrent: ty === currentTaxYear };
-    // Use gross if available; if null, fall back to net (means no platform fees recorded)
-    existing.gross += parseFloat(entry.gross ?? entry.net ?? "0") || 0;
-    existing.net   += parseFloat(entry.net ?? "0") || 0;
-    existing.count += 1;
-    taxYearMap.set(ty, existing);
-  }
-  const taxYearRows = Array.from(taxYearMap.values()).sort((a, b) => b.label.localeCompare(a.label));
-  const currentTYData = taxYearRows.find(r => r.isCurrent) ?? null;
+  // ── Self-employment tracker ───────────────────────────────────────────────
   const TRADING_ALLOWANCE = 1000;
+  const currentTaxYear = getCurrentTaxYear();
+  const tyStart = parseInt(currentTaxYear.split("/")[0]);
+  const tyStartDate = `${tyStart}-04-06`;
+  const tyEndDate = `${tyStart + 1}-04-05`;
+
+  let seGross = 0;
+  for (const entry of entries) {
+    if (entry.source_type === "PAYE") continue;
+    const dateStr = entry.work_date || entry.pay_date;
+    if (!dateStr) continue;
+    const d = dateStr.slice(0, 10);
+    if (d >= tyStartDate && d <= tyEndDate) {
+      seGross += parseFloat(entry.gross ?? entry.net ?? "0") || 0;
+    }
+  }
+
+  // ── PAYE tracker (current tax year) ──────────────────────────────────────
+  const payeTaxYear = { gross: 0, tax: 0, ni: 0, net: 0 };
+  for (const ps of payslips) {
+    const d = ps.pay_date?.slice(0, 10) ?? null;
+    if (!d || d < tyStartDate || d > tyEndDate) continue;
+    payeTaxYear.gross += parseFloat(String(ps.gross_pay || "0")) || 0;
+    payeTaxYear.tax   += parseFloat(String(ps.tax_deducted || "0")) || 0;
+    payeTaxYear.ni    += parseFloat(String(ps.ni_deducted || "0")) || 0;
+    payeTaxYear.net   += parseFloat(String(ps.net_pay || "0")) || 0;
+  }
 
   return (
     <div className="space-y-5 py-2">
@@ -309,10 +400,7 @@ export default function IncomePage() {
                     <div className="progress-track h-1.5">
                       <div
                         className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${pct}%`,
-                          background: "var(--sage-light)",
-                        }}
+                        style={{ width: `${pct}%`, background: "var(--sage-light)" }}
                       />
                     </div>
                   </div>
@@ -326,36 +414,43 @@ export default function IncomePage() {
         </div>
       )}
 
-      {/* ── Tax Year Earnings Tracker ─────────────────────────────────── */}
+      {/* ── Self-Employment Tracker ──────────────────────────────────────── */}
       <div className="card px-5 py-4">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-lg">📋</span>
+          <span className="text-lg">🧾</span>
           <h2 className="font-display font-bold italic text-xl" style={{ color: "var(--text-dark)" }}>
-            Tax Year Earnings
+            Self-Employment Tracker
           </h2>
-          <span className="ml-auto tag tag-sage" style={{ fontSize: "10px" }}>£1,000 Trading Allowance</span>
+          <span className="ml-auto tag tag-sage" style={{ fontSize: "10px" }}>{currentTaxYear}</span>
         </div>
         <p className="text-xs mb-4" style={{ color: "var(--text-soft)" }}>
-          Tracks gross income per UK tax year (6 Apr–5 Apr) against the HMRC trading allowance.
+          6 Apr {tyStart} – 5 Apr {tyStart + 1} · excludes PAYE employment income
         </p>
 
-        {/* Warning banner — shown when current tax year crosses £1,000 */}
-        {currentTYData && currentTYData.gross >= TRADING_ALLOWANCE && (
+        <div className="flex items-baseline gap-2 mb-4">
+          <span
+            className="font-display font-black italic text-3xl"
+            style={{ color: seGross >= TRADING_ALLOWANCE ? "var(--gold)" : "var(--text-dark)" }}
+          >
+            {formatGBP(seGross)}
+          </span>
+          <span className="text-sm" style={{ color: "var(--text-soft)" }}>SE gross this tax year</span>
+        </div>
+
+        {seGross >= TRADING_ALLOWANCE && (
           <div
-            className="rounded-xl px-4 py-3.5 mb-4 flex gap-3 items-start"
+            className="rounded-xl px-4 py-3.5 flex gap-3 items-start"
             style={{ background: "rgba(212,168,83,0.12)", border: "1.5px solid rgba(212,168,83,0.55)" }}
           >
             <span className="text-2xl flex-shrink-0 mt-0.5">⚠️</span>
             <div className="flex-1">
               <p className="text-sm font-bold leading-snug" style={{ color: "#a07020" }}>
-                You&apos;ve exceeded the £1,000 trading allowance in {currentTYData.label}
+                Self Assessment registration required
               </p>
               <p className="text-xs mt-1 leading-relaxed" style={{ color: "var(--text-mid)" }}>
-                Your gross earnings this tax year are{" "}
-                <span className="font-semibold">{formatGBP(currentTYData.gross)}</span> — £{(currentTYData.gross - TRADING_ALLOWANCE).toFixed(2)} above the threshold.
-                You may need to register for Self Assessment with HMRC.
-                The deadline to register for {currentTYData.label} is{" "}
-                <span className="font-semibold">{getSADeadline(currentTYData.label)}</span>.
+                Your gross self-employed income this tax year is{" "}
+                <span className="font-semibold">{formatGBP(seGross)}</span> — £{(seGross - TRADING_ALLOWANCE).toFixed(2)} above the £1,000 trading allowance.
+                Deadline to register: <span className="font-semibold">{getSADeadline(currentTaxYear)}</span>.
               </p>
               <a
                 href="https://www.gov.uk/register-for-self-assessment"
@@ -370,99 +465,265 @@ export default function IncomePage() {
           </div>
         )}
 
-        {/* Approaching warning — between £800 and £999 */}
-        {currentTYData && currentTYData.gross >= 800 && currentTYData.gross < TRADING_ALLOWANCE && (
+        {seGross >= 800 && seGross < TRADING_ALLOWANCE && (
           <div
-            className="rounded-xl px-4 py-3 mb-4 flex gap-2.5 items-start"
+            className="rounded-xl px-4 py-3 flex gap-2.5 items-start"
             style={{ background: "rgba(143,173,160,0.12)", border: "1.5px solid rgba(143,173,160,0.4)" }}
           >
             <span className="text-lg flex-shrink-0">📌</span>
             <p className="text-xs leading-relaxed" style={{ color: "var(--text-mid)" }}>
-              You&apos;re <span className="font-semibold">£{(TRADING_ALLOWANCE - currentTYData.gross).toFixed(2)} away</span> from the £1,000 trading allowance in {currentTYData.label}. Keep an eye on this — once you cross £1,000 gross you&apos;ll need to register for Self Assessment.
+              You&apos;re <span className="font-semibold">£{(TRADING_ALLOWANCE - seGross).toFixed(2)} away</span> from the £1,000 trading allowance. Once you cross £1,000 gross SE income you&apos;ll need to register for Self Assessment.
             </p>
           </div>
         )}
+      </div>
 
-        {taxYearRows.length === 0 ? (
-          <p className="text-sm text-center py-4" style={{ color: "var(--text-soft)" }}>
-            No dated income entries yet — add a work date or pay date when logging income ✦
-          </p>
-        ) : (
-          <div className="space-y-4">
-            {taxYearRows.map(ty => {
-              const pct = Math.min(100, (ty.gross / TRADING_ALLOWANCE) * 100);
-              const over = ty.gross >= TRADING_ALLOWANCE;
-              const near = !over && ty.gross >= 800;
-              const barColor = over ? "#d4a853" : near ? "var(--sage)" : "var(--sage-light)";
-              return (
-                <div key={ty.label}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-bold" style={{ color: "var(--text-dark)" }}>
-                        {ty.label}
-                      </span>
-                      <span className="text-xs" style={{ color: "var(--text-soft)" }}>
-                        {taxYearSpan(ty.label)}
-                      </span>
-                      {ty.isCurrent && (
-                        <span
-                          className="tag tag-sage"
-                          style={{ fontSize: "10px", padding: "1px 7px" }}
-                        >
-                          current
-                        </span>
-                      )}
-                      {over && (
-                        <span
-                          className="tag"
-                          style={{ fontSize: "10px", padding: "1px 7px", background: "rgba(212,168,83,0.15)", color: "var(--gold)", border: "1px solid rgba(212,168,83,0.4)" }}
-                        >
-                          ⚠️ over limit
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-right flex-shrink-0 ml-2">
-                      <span className="text-sm font-bold" style={{ color: over ? "var(--gold)" : "var(--text-dark)" }}>
-                        {formatGBP(ty.gross)}
-                      </span>
-                      <span className="text-xs ml-1" style={{ color: "var(--text-soft)" }}>gross</span>
-                    </div>
-                  </div>
+      {/* ── PAYE Tracker ─────────────────────────────────────────────────── */}
+      <div className="card px-5 py-4">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <span className="text-lg">🏢</span>
+          <h2 className="font-display font-bold italic text-xl" style={{ color: "var(--text-dark)" }}>
+            PAYE Tracker
+          </h2>
+          {latestTaxCode && (
+            <span
+              className="ml-auto font-mono font-bold text-sm px-3 py-1 rounded-xl flex-shrink-0"
+              style={{ background: "rgba(143,173,160,0.15)", color: "var(--sage)", border: "1.5px solid rgba(143,173,160,0.3)" }}
+            >
+              Tax code: {latestTaxCode}
+            </span>
+          )}
+        </div>
+        <p className="text-xs mb-4" style={{ color: "var(--text-soft)" }}>
+          {currentTaxYear} · 6 Apr {tyStart} – 5 Apr {tyStart + 1} · log payslips from Stint, Liveforce, agencies, employers
+        </p>
 
-                  {/* Progress bar toward £1,000 */}
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="flex-1 progress-track" style={{ height: "6px" }}>
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{ width: `${pct}%`, background: barColor }}
-                      />
-                    </div>
-                    <span className="text-xs tabular-nums flex-shrink-0" style={{ color: "var(--text-soft)", minWidth: "72px", textAlign: "right" }}>
-                      {pct.toFixed(0)}% of £1,000
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between text-xs" style={{ color: "var(--text-soft)" }}>
-                    <span>{ty.count} {ty.count === 1 ? "entry" : "entries"} · net {formatGBP(ty.net)}</span>
-                    {over
-                      ? <span style={{ color: "var(--gold)", fontWeight: 500 }}>£{(ty.gross - TRADING_ALLOWANCE).toFixed(0)} over allowance</span>
-                      : <span>£{(TRADING_ALLOWANCE - ty.gross).toFixed(0)} under allowance</span>
-                    }
-                  </div>
-                </div>
-              );
-            })}
+        {payeTaxYear.gross > 0 && (
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="rounded-xl px-3 py-2.5 text-center" style={{ background: "rgba(253,248,236,0.8)" }}>
+              <div className="font-bold text-base" style={{ color: "var(--gold)" }}>{formatGBP(payeTaxYear.gross)}</div>
+              <div className="text-xs mt-0.5" style={{ color: "var(--text-soft)" }}>gross</div>
+            </div>
+            <div className="rounded-xl px-3 py-2.5 text-center" style={{ background: "rgba(253,248,236,0.8)" }}>
+              <div className="font-bold text-base" style={{ color: "var(--text-mid)" }}>{formatGBP(payeTaxYear.tax)}</div>
+              <div className="text-xs mt-0.5" style={{ color: "var(--text-soft)" }}>tax paid</div>
+            </div>
+            <div className="rounded-xl px-3 py-2.5 text-center" style={{ background: "rgba(253,248,236,0.8)" }}>
+              <div className="font-bold text-base" style={{ color: "var(--text-mid)" }}>{formatGBP(payeTaxYear.ni)}</div>
+              <div className="text-xs mt-0.5" style={{ color: "var(--text-soft)" }}>NI paid</div>
+            </div>
           </div>
         )}
 
-        <p className="text-xs mt-5 pt-3 leading-relaxed" style={{ color: "var(--text-soft)", borderTop: "1px solid rgba(200,184,224,0.2)" }}>
-          ✦ Based on gross income (or net if gross not recorded) from entries with a work or pay date.
-          The £1,000 <a href="https://www.gov.uk/guidance/tax-free-allowances-on-property-and-trading-income" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>trading allowance</a> covers self-employed / side-hustle income only — PAYE employment income is taxed separately by your employer.
-          This is informational only; check with an accountant for your specific situation.
-        </p>
+        {payslips.length === 0 ? (
+          <p className="text-sm text-center py-3 mb-3" style={{ color: "var(--text-soft)" }}>
+            No payslips logged yet ✦
+          </p>
+        ) : (
+          <div className="space-y-2 mb-4">
+            {payslips.map(ps => (
+              <div key={ps.id}>
+                <div
+                  className="flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all"
+                  style={{
+                    background: expandedPayslip === ps.id ? "rgba(143,173,160,0.1)" : "rgba(250,246,240,0.8)",
+                    border: "1.5px solid rgba(200,184,224,0.2)",
+                  }}
+                  onClick={() => setExpandedPayslip(expandedPayslip === ps.id ? null : ps.id)}
+                >
+                  <span className="text-lg">🏢</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm" style={{ color: "var(--text-dark)" }}>{ps.employer}</div>
+                    <div className="text-xs" style={{ color: "var(--text-soft)" }}>
+                      {ps.pay_date ? format(parseISO(ps.pay_date), "d MMM yyyy") : "—"}
+                      {ps.tax_code && ` · ${ps.tax_code}`}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="font-bold text-sm" style={{ color: "var(--gold)" }}>{formatGBP(ps.gross_pay)}</div>
+                    <div className="text-xs" style={{ color: "var(--text-soft)" }}>net {formatGBP(ps.net_pay)}</div>
+                  </div>
+                  {expandedPayslip === ps.id
+                    ? <ChevronUp size={14} style={{ color: "var(--text-soft)", flexShrink: 0 }} />
+                    : <ChevronDown size={14} style={{ color: "var(--text-soft)", flexShrink: 0 }} />
+                  }
+                </div>
+
+                {expandedPayslip === ps.id && (
+                  <div
+                    className="mx-2 px-4 py-3 rounded-b-xl mb-1 -mt-1"
+                    style={{ background: "rgba(143,173,160,0.07)", border: "1.5px solid rgba(143,173,160,0.2)", borderTop: "none" }}
+                  >
+                    <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                      <div>
+                        <span style={{ color: "var(--text-soft)" }}>Gross: </span>
+                        <span className="font-bold">{formatGBP(ps.gross_pay)}</span>
+                      </div>
+                      <div>
+                        <span style={{ color: "var(--text-soft)" }}>Net: </span>
+                        <span className="font-bold" style={{ color: "var(--gold)" }}>{formatGBP(ps.net_pay)}</span>
+                      </div>
+                      <div>
+                        <span style={{ color: "var(--text-soft)" }}>Tax deducted: </span>
+                        <span>{formatGBP(ps.tax_deducted)}</span>
+                      </div>
+                      <div>
+                        <span style={{ color: "var(--text-soft)" }}>NI deducted: </span>
+                        <span>{formatGBP(ps.ni_deducted)}</span>
+                      </div>
+                      {ps.tax_code && (
+                        <div>
+                          <span style={{ color: "var(--text-soft)" }}>Tax code: </span>
+                          <span className="font-mono font-bold">{ps.tax_code}</span>
+                        </div>
+                      )}
+                      {ps.notes && (
+                        <div className="col-span-2">
+                          <span style={{ color: "var(--text-soft)" }}>Notes: </span>
+                          <span>{ps.notes}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        className="btn-primary text-xs px-3 py-1"
+                        onClick={() => { openEditPayslip(ps); setExpandedPayslip(null); }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="flex items-center gap-1 text-xs px-3 py-1 rounded-full transition-all"
+                        style={{ background: "var(--rose-pale)", color: "#b06070", border: "1px solid rgba(232,180,184,0.4)" }}
+                        onClick={() => deletePayslip(ps.id)}
+                      >
+                        <Trash2 size={11} />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!showPayForm && (
+          <button className="btn-primary flex items-center gap-2 text-sm" onClick={openAddPayslip}>
+            <Plus size={14} />
+            Add Payslip
+          </button>
+        )}
+
+        {showPayForm && (
+          <div className="mt-4 pt-4" style={{ borderTop: "1px solid rgba(200,184,224,0.25)" }}>
+            <h3 className="font-display font-bold italic text-lg mb-3" style={{ color: "var(--text-dark)" }}>
+              {editPayslip ? "Edit Payslip" : "Add Payslip ✦"}
+            </h3>
+            <div className="grid md:grid-cols-2 gap-3">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Employer / Agency *</label>
+                <input
+                  className="input-fairy"
+                  placeholder="e.g. Stint, Liveforce, Platinum Recruitment"
+                  value={payForm.employer}
+                  onChange={e => handlePayFormChange("employer", e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Pay date</label>
+                <input
+                  type="date"
+                  className="input-fairy"
+                  value={payForm.payDate}
+                  onChange={e => handlePayFormChange("payDate", e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Tax code</label>
+                <input
+                  className="input-fairy"
+                  placeholder="e.g. 1257L"
+                  value={payForm.taxCode}
+                  onChange={e => handlePayFormChange("taxCode", e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Gross pay (£)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input-fairy"
+                  placeholder="0.00"
+                  value={payForm.grossPay}
+                  onChange={e => handlePayFormChange("grossPay", e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Net pay (£)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input-fairy"
+                  placeholder="0.00"
+                  value={payForm.netPay}
+                  onChange={e => handlePayFormChange("netPay", e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Tax deducted (£)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input-fairy"
+                  placeholder="0.00"
+                  value={payForm.taxDeducted}
+                  onChange={e => handlePayFormChange("taxDeducted", e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>NI deducted (£)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input-fairy"
+                  placeholder="0.00"
+                  value={payForm.niDeducted}
+                  onChange={e => handlePayFormChange("niDeducted", e.target.value)}
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Notes</label>
+                <input
+                  className="input-fairy"
+                  placeholder="e.g. weekly shift pay, 12hrs"
+                  value={payForm.notes}
+                  onChange={e => handlePayFormChange("notes", e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button className="btn-primary flex-1" onClick={savePayslip}>
+                {editPayslip ? "Save changes ✦" : "Add payslip ✦"}
+              </button>
+              <button
+                className="btn-primary btn-rose flex-1"
+                onClick={() => { setShowPayForm(false); setEditPayslip(null); }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Add / Edit form */}
+      {/* Add / Edit income form */}
       {showForm && (
         <div className="card px-5 py-5" style={{ border: "1.5px solid rgba(143,173,160,0.4)" }}>
           <h2 className="font-display font-bold italic text-xl mb-4" style={{ color: "var(--text-dark)" }}>
@@ -481,6 +742,27 @@ export default function IncomePage() {
                   <option key={s} value={s}>{SOURCE_EMOJI[s] || "💰"} {s}</option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Employment type</label>
+              <div className="flex gap-2">
+                {(["Self-Employed", "PAYE"] as const).map(st => (
+                  <button
+                    key={st}
+                    type="button"
+                    className="px-4 py-2 rounded-full text-sm font-medium transition-all"
+                    style={
+                      form.sourceType === st
+                        ? { background: "var(--sage)", color: "#fff", border: "1.5px solid var(--sage)" }
+                        : { background: "rgba(255,255,255,0.7)", color: "var(--text-mid)", border: "1.5px solid rgba(200,184,224,0.35)" }
+                    }
+                    onClick={() => handleFormChange("sourceType", st)}
+                  >
+                    {st === "Self-Employed" ? "🧾 SE" : "🏢 PAYE"}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>
@@ -616,7 +898,12 @@ export default function IncomePage() {
                 >
                   <span className="text-lg">{SOURCE_EMOJI[entry.source] || "💰"}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm" style={{ color: "var(--text-dark)" }}>{entry.source}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm" style={{ color: "var(--text-dark)" }}>{entry.source}</span>
+                      {entry.source_type === "PAYE" && (
+                        <span className="tag tag-rose" style={{ fontSize: "9px", padding: "1px 6px" }}>PAYE</span>
+                      )}
+                    </div>
                     <div className="text-xs" style={{ color: "var(--text-soft)" }}>
                       {entry.work_date ? format(parseISO(entry.work_date), "d MMM") : "—"}
                       {entry.notes && ` · ${entry.notes}`}
@@ -661,6 +948,12 @@ export default function IncomePage() {
                       <div>
                         <span style={{ color: "var(--text-soft)" }}>Net: </span>
                         <span className="font-bold" style={{ color: "var(--gold)" }}>{formatGBP(entry.net)}</span>
+                      </div>
+                      <div>
+                        <span style={{ color: "var(--text-soft)" }}>Type: </span>
+                        <span className={`tag tag-${entry.source_type === "PAYE" ? "rose" : "sage"}`} style={{ fontSize: "10px" }}>
+                          {entry.source_type || "Self-Employed"}
+                        </span>
                       </div>
                       <div>
                         <span style={{ color: "var(--text-soft)" }}>Account: </span>

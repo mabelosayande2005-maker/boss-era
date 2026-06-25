@@ -20,7 +20,8 @@
       "Bash(npm_config_cache=.npm-cache npx tsc --noEmit)",
       "Bash(node *)",
       "Bash(npx tsc *)",
-      "Bash(vercel --version)"
+      "Bash(vercel --version)",
+      "Bash(npm run *)"
     ]
   }
 }

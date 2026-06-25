@@ -17,6 +17,7 @@ async function ensureTables() {
     notes TEXT,
     created_at TIMESTAMP DEFAULT NOW()
   )`;
+  await sql`ALTER TABLE income_entries ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'Self-Employed'`;
 }
 
 // Neon returns DATE columns as JS Date objects server-side.
@@ -77,12 +78,12 @@ export async function POST(req: Request) {
     const sql = getDb();
     await ensureTables();
     const body = await req.json();
-    const { action, id, source, workDate, payDate, gross, taxFees, net, account, notes } = body;
+    const { action, id, source, sourceType, workDate, payDate, gross, taxFees, net, account, notes } = body;
 
     if (action === "add") {
       const [entry] = await sql`
-        INSERT INTO income_entries (source, work_date, pay_date, gross, tax_fees, net, account, notes)
-        VALUES (${source}, ${workDate || null}, ${payDate || null}, ${gross || null}, ${taxFees || 0}, ${net || gross}, ${account || null}, ${notes || null})
+        INSERT INTO income_entries (source, source_type, work_date, pay_date, gross, tax_fees, net, account, notes)
+        VALUES (${source}, ${sourceType || "Self-Employed"}, ${workDate || null}, ${payDate || null}, ${gross || null}, ${taxFees || 0}, ${net || gross}, ${account || null}, ${notes || null})
         RETURNING *
       `;
       return NextResponse.json({ entry: normalizeEntry(entry as Record<string, unknown>) });
@@ -96,7 +97,8 @@ export async function POST(req: Request) {
     if (action === "update") {
       const [entry] = await sql`
         UPDATE income_entries
-        SET source = ${source}, work_date = ${workDate || null}, pay_date = ${payDate || null},
+        SET source = ${source}, source_type = ${sourceType || "Self-Employed"},
+            work_date = ${workDate || null}, pay_date = ${payDate || null},
             gross = ${gross || null}, tax_fees = ${taxFees || 0}, net = ${net || gross},
             account = ${account || null}, notes = ${notes || null}
         WHERE id = ${id} RETURNING *
