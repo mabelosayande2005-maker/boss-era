@@ -15,10 +15,11 @@ type SummerTask = {
 };
 
 const STREAMS = [
-  { name: "Personal TikTok", emoji: "🎵", color: "#e8b4b8", bg: "var(--rose-pale)", border: "rgba(232,180,184,0.5)", tag: "tag-rose" },
-  { name: "StudyGlow",       emoji: "✨", color: "#c8b8e0", bg: "var(--lavender-pale)", border: "rgba(200,184,224,0.5)", tag: "tag-lavender" },
-  { name: "Vinted",          emoji: "🛍️", color: "#d4a853", bg: "#fdf8ec", border: "rgba(212,168,83,0.4)", tag: "tag-gold" },
-  { name: "Skills",          emoji: "🧠", color: "#8fada0", bg: "var(--sage-pale)", border: "rgba(143,173,160,0.5)", tag: "tag-sage" },
+  { name: "Personal TikTok", emoji: "🎵", color: "#e8b4b8", bg: "var(--rose-pale)",      border: "rgba(232,180,184,0.5)", tag: "tag-rose" },
+  { name: "Boss Era",        emoji: "👑", color: "#c49028", bg: "#fdf5e4",               border: "rgba(196,144,40,0.4)",  tag: "tag-gold" },
+  { name: "StudyGlow",       emoji: "✨", color: "#c8b8e0", bg: "var(--lavender-pale)",  border: "rgba(200,184,224,0.5)", tag: "tag-lavender" },
+  { name: "Vinted",          emoji: "🛍️", color: "#d4a853", bg: "#fdf8ec",               border: "rgba(212,168,83,0.4)",  tag: "tag-gold" },
+  { name: "Skills",          emoji: "🧠", color: "#8fada0", bg: "var(--sage-pale)",      border: "rgba(143,173,160,0.5)", tag: "tag-sage" },
   { name: "Admin",           emoji: "📋", color: "#9b8c8c", bg: "rgba(250,246,240,0.9)", border: "rgba(155,140,140,0.3)", tag: "" },
 ] as const;
 
@@ -193,7 +194,7 @@ export default function SummerPlanPage() {
         </div>
 
         {/* Stream mini-bars */}
-        <div className="grid grid-cols-5 gap-2 mt-4">
+        <div className="grid grid-cols-6 gap-2 mt-4">
           {STREAMS.map(stream => {
             const streamTasks = tasksByStream(stream.name);
             const streamDone = streamTasks.filter(t => t.completed).length;
