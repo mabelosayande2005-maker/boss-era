@@ -12,6 +12,7 @@ const navItems = [
   { href: "/summer-plan", label: "Summer", emoji: "☀️" },
   { href: "/habits", label: "Habits", emoji: "🌿" },
   { href: "/content", label: "Content", emoji: "🎬" },
+  { href: "/jewellery", label: "Jewellery", emoji: "💎" },
   { href: "/vinted", label: "Vinted", emoji: "🛍️" },
   { href: "/career", label: "Career", emoji: "💼" },
   { href: "/wellbeing", label: "Wellbeing", emoji: "🌸" },
@@ -23,7 +24,6 @@ const navItems = [
   { href: "/social", label: "Social", emoji: "🥂" },
   { href: "/music", label: "Music", emoji: "🎵" },
   { href: "/notes", label: "Notes", emoji: "📝" },
-  { href: "/jewellery", label: "Jewellery", emoji: "💎" },
 ];
 
 // First 4 always visible in the mobile bottom bar

@@ -13,6 +13,7 @@ async function ensureTables() {
   )`;
   await sql`ALTER TABLE jewellery_inspiration ADD COLUMN IF NOT EXISTS label TEXT`;
   await sql`ALTER TABLE jewellery_inspiration ADD COLUMN IF NOT EXISTS notes TEXT`;
+  await sql`ALTER TABLE jewellery_inspiration ADD COLUMN IF NOT EXISTS drawing_data TEXT`;
 
   await sql`CREATE TABLE IF NOT EXISTS jewellery_products (
     id SERIAL PRIMARY KEY,
@@ -23,6 +24,7 @@ async function ensureTables() {
   await sql`ALTER TABLE jewellery_products ADD COLUMN IF NOT EXISTS materials TEXT`;
   await sql`ALTER TABLE jewellery_products ADD COLUMN IF NOT EXISTS cost_price NUMERIC(10,2)`;
   await sql`ALTER TABLE jewellery_products ADD COLUMN IF NOT EXISTS sell_price NUMERIC(10,2)`;
+  await sql`ALTER TABLE jewellery_products ADD COLUMN IF NOT EXISTS drawing_data TEXT`;
 
   await sql`CREATE TABLE IF NOT EXISTS jewellery_notes (
     id SERIAL PRIMARY KEY,
@@ -31,6 +33,7 @@ async function ensureTables() {
     updated_at TIMESTAMP DEFAULT NOW()
   )`;
   await sql`ALTER TABLE jewellery_notes ADD COLUMN IF NOT EXISTS body TEXT`;
+  await sql`ALTER TABLE jewellery_notes ADD COLUMN IF NOT EXISTS drawing_data TEXT`;
 
   await sql`CREATE TABLE IF NOT EXISTS jewellery_checklist (
     id SERIAL PRIMARY KEY,
@@ -101,19 +104,19 @@ export async function POST(req: Request) {
 
     // ── Inspiration ──────────────────────────────────────────────────────────────
     if (action === "add-inspiration") {
-      const { image_url, label, notes } = body;
+      const { image_url, label, notes, drawing_data } = body;
       const [item] = await sql`
-        INSERT INTO jewellery_inspiration (image_url, label, notes)
-        VALUES (${image_url}, ${label ?? null}, ${notes ?? null})
+        INSERT INTO jewellery_inspiration (image_url, label, notes, drawing_data)
+        VALUES (${image_url}, ${label ?? null}, ${notes ?? null}, ${drawing_data ?? null})
         RETURNING *
       `;
       return NextResponse.json({ item });
     }
 
     if (action === "update-inspiration") {
-      const { label, notes } = body;
+      const { label, notes, drawing_data } = body;
       const [item] = await sql`
-        UPDATE jewellery_inspiration SET label = ${label ?? null}, notes = ${notes ?? null}
+        UPDATE jewellery_inspiration SET label = ${label ?? null}, notes = ${notes ?? null}, drawing_data = ${drawing_data ?? null}
         WHERE id = ${id} RETURNING *
       `;
       return NextResponse.json({ item });
@@ -126,21 +129,21 @@ export async function POST(req: Request) {
 
     // ── Products ─────────────────────────────────────────────────────────────────
     if (action === "add-product") {
-      const { name, description, materials, cost_price, sell_price } = body;
+      const { name, description, materials, cost_price, sell_price, drawing_data } = body;
       const [product] = await sql`
-        INSERT INTO jewellery_products (name, description, materials, cost_price, sell_price)
-        VALUES (${name}, ${description ?? null}, ${materials ?? null}, ${cost_price ?? null}, ${sell_price ?? null})
+        INSERT INTO jewellery_products (name, description, materials, cost_price, sell_price, drawing_data)
+        VALUES (${name}, ${description ?? null}, ${materials ?? null}, ${cost_price ?? null}, ${sell_price ?? null}, ${drawing_data ?? null})
         RETURNING *
       `;
       return NextResponse.json({ product });
     }
 
     if (action === "update-product") {
-      const { name, description, materials, cost_price, sell_price } = body;
+      const { name, description, materials, cost_price, sell_price, drawing_data } = body;
       const [product] = await sql`
         UPDATE jewellery_products SET
           name = ${name}, description = ${description ?? null}, materials = ${materials ?? null},
-          cost_price = ${cost_price ?? null}, sell_price = ${sell_price ?? null}
+          cost_price = ${cost_price ?? null}, sell_price = ${sell_price ?? null}, drawing_data = ${drawing_data ?? null}
         WHERE id = ${id} RETURNING *
       `;
       return NextResponse.json({ product });
@@ -153,19 +156,19 @@ export async function POST(req: Request) {
 
     // ── Research Notes ────────────────────────────────────────────────────────────
     if (action === "add-note") {
-      const { title, body: noteBody } = body;
+      const { title, body: noteBody, drawing_data } = body;
       const [note] = await sql`
-        INSERT INTO jewellery_notes (title, body)
-        VALUES (${title}, ${noteBody ?? null})
+        INSERT INTO jewellery_notes (title, body, drawing_data)
+        VALUES (${title}, ${noteBody ?? null}, ${drawing_data ?? null})
         RETURNING *
       `;
       return NextResponse.json({ note });
     }
 
     if (action === "update-note") {
-      const { title, body: noteBody } = body;
+      const { title, body: noteBody, drawing_data } = body;
       const [note] = await sql`
-        UPDATE jewellery_notes SET title = ${title}, body = ${noteBody ?? null}, updated_at = NOW()
+        UPDATE jewellery_notes SET title = ${title}, body = ${noteBody ?? null}, drawing_data = ${drawing_data ?? null}, updated_at = NOW()
         WHERE id = ${id} RETURNING *
       `;
       return NextResponse.json({ note });

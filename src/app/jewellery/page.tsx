@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, X, Pencil, Trash2, Check, ImageIcon, Upload, ChevronDown, ChevronUp } from "lucide-react";
+import { DrawingCanvas } from "@/components/DrawingCanvas";
 
 // ── types ──────────────────────────────────────────────────────────────────────
-type InspirationItem = { id: number; image_url: string; label: string | null; notes: string | null };
-type Product = { id: number; name: string; description: string | null; materials: string | null; cost_price: number | null; sell_price: number | null };
-type ResearchNote = { id: number; title: string; body: string | null; updated_at: string };
+type InspirationItem = { id: number; image_url: string; label: string | null; notes: string | null; drawing_data: string | null };
+type Product = { id: number; name: string; description: string | null; materials: string | null; cost_price: number | null; sell_price: number | null; drawing_data: string | null };
+type ResearchNote = { id: number; title: string; body: string | null; updated_at: string; drawing_data: string | null };
 type ChecklistItem = { id: number; item: string; is_done: boolean; sort_order: number };
 type Stats = { inspirationCount: number; productCount: number; noteCount: number; checklistDone: number; checklistTotal: number };
 type Tab = "inspiration" | "products" | "notes" | "checklist";
@@ -20,10 +21,39 @@ function profitInfo(cost: number | null, sell: number | null) {
   if (!cost || !sell || sell <= 0) return null;
   const pct = ((sell - cost) / sell) * 100;
   const profit = sell - cost;
-  if (pct >= 50) return { pct, profit, label: "Great", color: "var(--sage)",    bg: "var(--sage-pale)" };
-  if (pct >= 30) return { pct, profit, label: "Decent", color: "var(--gold)",   bg: "rgba(253,248,232,0.9)" };
-  if (pct > 0)   return { pct, profit, label: "Thin",   color: "#c08040",       bg: "var(--cream-dark)" };
-  return         { pct, profit, label: "Loss",  color: "#b06070",       bg: "var(--rose-pale)" };
+  if (pct >= 50) return { pct, profit, label: "Great",  color: "var(--sage)",  bg: "var(--sage-pale)" };
+  if (pct >= 30) return { pct, profit, label: "Decent", color: "var(--gold)",  bg: "rgba(253,248,232,0.9)" };
+  if (pct > 0)   return { pct, profit, label: "Thin",   color: "#c08040",      bg: "var(--cream-dark)" };
+  return         { pct, profit, label: "Loss",   color: "#b06070",      bg: "var(--rose-pale)" };
+}
+
+// ── canvas toggle button ───────────────────────────────────────────────────────
+function SketchToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full transition-all"
+      style={{
+        background: open ? "var(--lavender-pale)" : "rgba(0,0,0,0.04)",
+        color: open ? "var(--lavender)" : "var(--text-soft)",
+        border: `1.5px solid ${open ? "rgba(141,120,196,0.35)" : "rgba(0,0,0,0.06)"}`,
+      }}
+    >
+      <Pencil size={11} />
+      {open ? "Hide sketch" : "Add a sketch ✏️"}
+    </button>
+  );
+}
+
+// ── drawing thumbnail ─────────────────────────────────────────────────────────
+function DrawingThumb({ data, maxHeight = 100 }: { data: string; maxHeight?: number }) {
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.07)", background: "#fff" }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={data} alt="Sketch" style={{ width: "100%", maxHeight, objectFit: "contain", display: "block" }} />
+    </div>
+  );
 }
 
 // ── main page ──────────────────────────────────────────────────────────────────
@@ -36,32 +66,42 @@ export default function JewelleryPage() {
   const [loading,     setLoading]     = useState(true);
   const [tab,         setTab]         = useState<Tab>("inspiration");
 
-  // Inspiration form
-  const [showInsForm, setShowInsForm]   = useState(false);
-  const [insUrl,      setInsUrl]        = useState("");
-  const [insLabel,    setInsLabel]      = useState("");
-  const [insNotes,    setInsNotes]      = useState("");
+  // Inspiration add form
+  const [showInsForm,  setShowInsForm]  = useState(false);
+  const [insUrl,       setInsUrl]       = useState("");
+  const [insLabel,     setInsLabel]     = useState("");
+  const [insNotes,     setInsNotes]     = useState("");
+  const [insDrawing,   setInsDrawing]   = useState<string | null>(null);
+  const [insShowCanvas, setInsShowCanvas] = useState(false);
   const [insUploading, setInsUploading] = useState(false);
   const [insUploadErr, setInsUploadErr] = useState<string | null>(null);
-  const [editInsId,   setEditInsId]     = useState<number | null>(null);
-  const [editInsLabel, setEditInsLabel] = useState("");
-  const [editInsNotes, setEditInsNotes] = useState("");
   const insFileRef = useRef<HTMLInputElement>(null);
+
+  // Inspiration inline edit
+  const [editInsId,       setEditInsId]       = useState<number | null>(null);
+  const [editInsLabel,    setEditInsLabel]     = useState("");
+  const [editInsNotes,    setEditInsNotes]     = useState("");
+  const [editInsDrawing,  setEditInsDrawing]   = useState<string | null>(null);
+  const [editInsShowCanvas, setEditInsShowCanvas] = useState(false);
 
   // Product form
   const [showProductForm, setShowProductForm] = useState(false);
   const [editProduct,     setEditProduct]     = useState<Product | null>(null);
-  const [pName,  setPName]  = useState("");
-  const [pDesc,  setPDesc]  = useState("");
-  const [pMats,  setPMats]  = useState("");
-  const [pCost,  setPCost]  = useState("");
-  const [pSell,  setPSell]  = useState("");
+  const [pName,        setPName]        = useState("");
+  const [pDesc,        setPDesc]        = useState("");
+  const [pMats,        setPMats]        = useState("");
+  const [pCost,        setPCost]        = useState("");
+  const [pSell,        setPSell]        = useState("");
+  const [pDrawing,     setPDrawing]     = useState<string | null>(null);
+  const [pShowCanvas,  setPShowCanvas]  = useState(false);
 
   // Note form
-  const [showNoteForm, setShowNoteForm] = useState(false);
-  const [editNote,     setEditNote]     = useState<ResearchNote | null>(null);
-  const [nTitle, setNTitle] = useState("");
-  const [nBody,  setNBody]  = useState("");
+  const [showNoteForm,  setShowNoteForm]  = useState(false);
+  const [editNote,      setEditNote]      = useState<ResearchNote | null>(null);
+  const [nTitle,        setNTitle]        = useState("");
+  const [nBody,         setNBody]         = useState("");
+  const [nDrawing,      setNDrawing]      = useState<string | null>(null);
+  const [nShowCanvas,   setNShowCanvas]   = useState(false);
   const [expandedNoteId, setExpandedNoteId] = useState<number | null>(null);
 
   // Checklist
@@ -78,7 +118,7 @@ export default function JewelleryPage() {
       setNotes(data.notes             ?? []);
       setChecklist(data.checklist     ?? []);
       setStats(data.stats             ?? null);
-    } catch { /* silent — loading state handles UX */ }
+    } catch { /* silent */ }
     setLoading(false);
   }, []);
 
@@ -100,17 +140,33 @@ export default function JewelleryPage() {
     setInsUploading(false);
   };
 
+  const openInsAdd = () => {
+    setInsUrl(""); setInsLabel(""); setInsNotes("");
+    setInsDrawing(null); setInsShowCanvas(false); setInsUploadErr(null);
+    setShowInsForm(true);
+  };
+
   const saveInspiration = async () => {
     if (!insUrl) return;
-    await post({ action: "add-inspiration", image_url: insUrl, label: insLabel.trim() || null, notes: insNotes.trim() || null });
-    setInsUrl(""); setInsLabel(""); setInsNotes(""); setShowInsForm(false);
+    await post({ action: "add-inspiration", image_url: insUrl, label: insLabel.trim() || null, notes: insNotes.trim() || null, drawing_data: insDrawing });
+    setShowInsForm(false);
     fetchData();
   };
 
+  const openInsEdit = (item: InspirationItem) => {
+    setEditInsId(item.id);
+    setEditInsLabel(item.label ?? "");
+    setEditInsNotes(item.notes ?? "");
+    setEditInsDrawing(item.drawing_data ?? null);
+    setEditInsShowCanvas(!!item.drawing_data);
+  };
+
   const saveInsEdit = async (id: number) => {
-    await post({ action: "update-inspiration", id, label: editInsLabel.trim() || null, notes: editInsNotes.trim() || null });
+    const label = editInsLabel.trim() || null;
+    const notes = editInsNotes.trim() || null;
+    await post({ action: "update-inspiration", id, label, notes, drawing_data: editInsDrawing });
     setEditInsId(null);
-    setInspiration(prev => prev.map(i => i.id === id ? { ...i, label: editInsLabel.trim() || null, notes: editInsNotes.trim() || null } : i));
+    setInspiration(prev => prev.map(i => i.id === id ? { ...i, label, notes, drawing_data: editInsDrawing } : i));
   };
 
   const deleteInspiration = async (id: number) => {
@@ -121,6 +177,7 @@ export default function JewelleryPage() {
   // ── products ──────────────────────────────────────────────────────────────────
   const openAddProduct = () => {
     setEditProduct(null); setPName(""); setPDesc(""); setPMats(""); setPCost(""); setPSell("");
+    setPDrawing(null); setPShowCanvas(false);
     setShowProductForm(true);
   };
   const openEditProduct = (p: Product) => {
@@ -128,6 +185,8 @@ export default function JewelleryPage() {
     setPName(p.name); setPDesc(p.description ?? ""); setPMats(p.materials ?? "");
     setPCost(p.cost_price != null ? String(p.cost_price) : "");
     setPSell(p.sell_price != null ? String(p.sell_price) : "");
+    setPDrawing(p.drawing_data ?? null);
+    setPShowCanvas(!!p.drawing_data);
     setShowProductForm(true);
   };
   const saveProduct = async () => {
@@ -136,6 +195,7 @@ export default function JewelleryPage() {
       name: pName.trim(), description: pDesc.trim() || null, materials: pMats.trim() || null,
       cost_price: pCost ? parseFloat(pCost) : null,
       sell_price: pSell ? parseFloat(pSell) : null,
+      drawing_data: pDrawing,
     };
     const res  = await post({ action: editProduct ? "update-product" : "add-product", id: editProduct?.id, ...payload });
     const data = await res.json();
@@ -154,15 +214,17 @@ export default function JewelleryPage() {
   // ── notes ─────────────────────────────────────────────────────────────────────
   const openAddNote = () => {
     setEditNote(null); setNTitle(""); setNBody("");
+    setNDrawing(null); setNShowCanvas(false);
     setShowNoteForm(true);
   };
   const openEditNote = (n: ResearchNote) => {
     setEditNote(n); setNTitle(n.title); setNBody(n.body ?? "");
+    setNDrawing(n.drawing_data ?? null); setNShowCanvas(!!n.drawing_data);
     setShowNoteForm(true); setExpandedNoteId(null);
   };
   const saveNote = async () => {
     if (!nTitle.trim()) return;
-    const res  = await post({ action: editNote ? "update-note" : "add-note", id: editNote?.id, title: nTitle.trim(), body: nBody.trim() || null });
+    const res  = await post({ action: editNote ? "update-note" : "add-note", id: editNote?.id, title: nTitle.trim(), body: nBody.trim() || null, drawing_data: nDrawing });
     const data = await res.json();
     if (data.note) {
       if (editNote) setNotes(prev => prev.map(n => n.id === editNote.id ? data.note : n));
@@ -194,7 +256,7 @@ export default function JewelleryPage() {
   };
 
   // ── derived ───────────────────────────────────────────────────────────────────
-  const livePct   = checklist.length ? Math.round(checklist.filter(c => c.is_done).length / checklist.length * 100) : 0;
+  const livePct    = checklist.length ? Math.round(checklist.filter(c => c.is_done).length / checklist.length * 100) : 0;
   const liveProfit = profitInfo(pCost ? parseFloat(pCost) : null, pSell ? parseFloat(pSell) : null);
 
   return (
@@ -215,9 +277,9 @@ export default function JewelleryPage() {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "Inspo images",   value: loading ? "—" : stats?.inspirationCount ?? 0,  color: "var(--rose)",    tab: "inspiration" as Tab },
-            { label: "Product ideas",  value: loading ? "—" : stats?.productCount ?? 0,       color: "var(--gold)",    tab: "products"    as Tab },
-            { label: "Research notes", value: loading ? "—" : stats?.noteCount ?? 0,          color: "var(--sage)",    tab: "notes"       as Tab },
+            { label: "Inspo images",   value: loading ? "—" : stats?.inspirationCount ?? 0,  color: "var(--rose)",     tab: "inspiration" as Tab },
+            { label: "Product ideas",  value: loading ? "—" : stats?.productCount ?? 0,       color: "var(--gold)",     tab: "products"    as Tab },
+            { label: "Research notes", value: loading ? "—" : stats?.noteCount ?? 0,          color: "var(--sage)",     tab: "notes"       as Tab },
             { label: "Launch tasks",   value: loading ? "—" : `${stats?.checklistDone ?? 0}/${stats?.checklistTotal ?? 0}`, color: "var(--lavender)", tab: "checklist" as Tab },
           ].map(s => (
             <button key={s.label} onClick={() => setTab(s.tab)}
@@ -233,10 +295,10 @@ export default function JewelleryPage() {
       {/* ── Tabs ──────────────────────────────────────────────────────────── */}
       <div className="flex gap-1.5 flex-wrap">
         {([
-          { key: "inspiration", label: "Inspiration",  emoji: "🌸", color: "var(--rose)",    bg: "var(--rose-pale)"    },
-          { key: "products",    label: "Product Ideas", emoji: "💍", color: "var(--gold)",    bg: "rgba(253,248,232,1)" },
-          { key: "notes",       label: "Research",      emoji: "📋", color: "var(--sage)",    bg: "var(--sage-pale)"    },
-          { key: "checklist",   label: "Checklist",     emoji: "✅", color: "var(--lavender)", bg: "var(--lavender-pale)" },
+          { key: "inspiration", label: "Inspiration",   emoji: "🌸", color: "var(--rose)",     bg: "var(--rose-pale)"     },
+          { key: "products",    label: "Product Ideas",  emoji: "💍", color: "var(--gold)",     bg: "rgba(253,248,232,1)"  },
+          { key: "notes",       label: "Research",       emoji: "📋", color: "var(--sage)",     bg: "var(--sage-pale)"     },
+          { key: "checklist",   label: "Checklist",      emoji: "✅", color: "var(--lavender)", bg: "var(--lavender-pale)" },
         ] as const).map(t => (
           <button key={t.key} onClick={() => setTab(t.key as Tab)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all"
@@ -259,7 +321,7 @@ export default function JewelleryPage() {
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-soft)" }}>
               Mood Board · {inspiration.length} image{inspiration.length !== 1 ? "s" : ""}
             </p>
-            <button onClick={() => { setShowInsForm(true); setInsUrl(""); setInsLabel(""); setInsNotes(""); setInsUploadErr(null); }}
+            <button onClick={openInsAdd}
               className="btn-primary text-sm px-3 py-1.5 flex items-center gap-1">
               <Plus size={14} /> Add image
             </button>
@@ -306,6 +368,16 @@ export default function JewelleryPage() {
                 className="input-fairy w-full text-sm" rows={2}
                 placeholder="Notes — what do you love about this? How could you recreate it?" style={{ resize: "vertical" }} />
 
+              {/* Sketch toggle */}
+              <SketchToggle open={insShowCanvas} onToggle={() => setInsShowCanvas(v => !v)} />
+              {insShowCanvas && (
+                <DrawingCanvas
+                  key="ins-add"
+                  initialData={insDrawing}
+                  onChange={setInsDrawing}
+                />
+              )}
+
               <div className="flex justify-end gap-2">
                 <button onClick={() => setShowInsForm(false)} className="text-sm" style={{ color: "var(--text-soft)" }}>Cancel</button>
                 <button onClick={saveInspiration} disabled={!insUrl}
@@ -337,10 +409,15 @@ export default function JewelleryPage() {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={imgSrc(item.image_url)} alt={item.label || "Inspiration"}
                       style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    {/* Sketch badge */}
+                    {item.drawing_data && (
+                      <span className="absolute top-2 left-2 text-xs px-1.5 py-0.5 rounded-full font-medium"
+                        style={{ background: "rgba(255,255,255,0.9)", color: "var(--lavender)" }}>✏️</span>
+                    )}
                     {/* Hover actions */}
                     <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
-                        onClick={() => { setEditInsId(item.id); setEditInsLabel(item.label ?? ""); setEditInsNotes(item.notes ?? ""); }}
+                        onClick={() => openInsEdit(item)}
                         className="w-7 h-7 rounded-full flex items-center justify-center"
                         style={{ background: "rgba(255,255,255,0.9)", color: "var(--sage)" }}>
                         <Pencil size={12} />
@@ -360,6 +437,14 @@ export default function JewelleryPage() {
                         className="input-fairy w-full text-xs py-1.5" placeholder="Label…" autoFocus />
                       <textarea value={editInsNotes} onChange={e => setEditInsNotes(e.target.value)}
                         className="input-fairy w-full text-xs py-1.5" rows={2} placeholder="Notes…" style={{ resize: "vertical" }} />
+                      <SketchToggle open={editInsShowCanvas} onToggle={() => setEditInsShowCanvas(v => !v)} />
+                      {editInsShowCanvas && (
+                        <DrawingCanvas
+                          key={`ins-edit-${item.id}`}
+                          initialData={editInsDrawing}
+                          onChange={setEditInsDrawing}
+                        />
+                      )}
                       <div className="flex gap-2 justify-end">
                         <button onClick={() => setEditInsId(null)} className="text-xs" style={{ color: "var(--text-soft)" }}>Cancel</button>
                         <button onClick={() => saveInsEdit(item.id)}
@@ -367,12 +452,13 @@ export default function JewelleryPage() {
                           style={{ background: "var(--sage-pale)", color: "var(--sage)" }}>Save</button>
                       </div>
                     </div>
-                  ) : (item.label || item.notes) ? (
-                    <div className="px-3 py-2.5">
+                  ) : (
+                    <div className="px-3 py-2.5 space-y-1.5">
                       {item.label && <p className="text-xs font-semibold truncate" style={{ color: "var(--text-dark)" }}>{item.label}</p>}
-                      {item.notes && <p className="text-xs mt-0.5 line-clamp-2" style={{ color: "var(--text-soft)" }}>{item.notes}</p>}
+                      {item.notes && <p className="text-xs line-clamp-2" style={{ color: "var(--text-soft)" }}>{item.notes}</p>}
+                      {item.drawing_data && <DrawingThumb data={item.drawing_data} maxHeight={80} />}
                     </div>
-                  ) : null}
+                  )}
                 </div>
               ))}
             </div>
@@ -452,6 +538,16 @@ export default function JewelleryPage() {
                 </div>
               )}
 
+              {/* Design sketch */}
+              <SketchToggle open={pShowCanvas} onToggle={() => setPShowCanvas(v => !v)} />
+              {pShowCanvas && (
+                <DrawingCanvas
+                  key={editProduct ? `prod-${editProduct.id}` : "prod-new"}
+                  initialData={pDrawing}
+                  onChange={setPDrawing}
+                />
+              )}
+
               <div className="flex gap-3">
                 <button onClick={saveProduct} className="btn-primary flex-1">
                   <Check size={14} className="inline mr-1" />
@@ -493,6 +589,9 @@ export default function JewelleryPage() {
                               {info.pct.toFixed(0)}% margin
                             </span>
                           )}
+                          {p.drawing_data && (
+                            <span className="text-xs" style={{ color: "var(--lavender)" }}>✏️</span>
+                          )}
                         </div>
                         {p.description && (
                           <p className="text-sm mt-1 line-clamp-2 leading-relaxed" style={{ color: "var(--text-soft)" }}>{p.description}</p>
@@ -512,6 +611,7 @@ export default function JewelleryPage() {
                             </span>
                           )}
                         </div>
+                        {p.drawing_data && <DrawingThumb data={p.drawing_data} maxHeight={120} />}
                       </div>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                         <button onClick={() => openEditProduct(p)}
@@ -568,9 +668,20 @@ export default function JewelleryPage() {
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Notes</label>
                 <textarea value={nBody} onChange={e => setNBody(e.target.value)}
-                  className="input-fairy w-full text-sm leading-relaxed" rows={8}
+                  className="input-fairy w-full text-sm leading-relaxed" rows={6}
                   placeholder="Write your research, links, findings, thoughts…" style={{ resize: "vertical" }} />
               </div>
+
+              {/* Sketch / annotations */}
+              <SketchToggle open={nShowCanvas} onToggle={() => setNShowCanvas(v => !v)} />
+              {nShowCanvas && (
+                <DrawingCanvas
+                  key={editNote ? `note-${editNote.id}` : "note-new"}
+                  initialData={nDrawing}
+                  onChange={setNDrawing}
+                />
+              )}
+
               <div className="flex gap-3">
                 <button onClick={saveNote} className="btn-primary flex-1">
                   <Check size={14} className="inline mr-1" />
@@ -605,7 +716,10 @@ export default function JewelleryPage() {
                     <div className="flex items-start justify-between gap-2">
                       <button className="flex-1 text-left min-w-0"
                         onClick={() => setExpandedNoteId(expanded ? null : note.id)}>
-                        <p className="font-semibold" style={{ color: "var(--text-dark)" }}>{note.title}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold" style={{ color: "var(--text-dark)" }}>{note.title}</p>
+                          {note.drawing_data && <span className="text-xs" style={{ color: "var(--lavender)" }}>✏️</span>}
+                        </div>
                         {!expanded && note.body && (
                           <p className="text-sm mt-1 line-clamp-2 leading-relaxed" style={{ color: "var(--text-soft)" }}>{note.body}</p>
                         )}
@@ -622,10 +736,14 @@ export default function JewelleryPage() {
                         </button>
                       </div>
                     </div>
-                    {expanded && note.body && (
-                      <div className="mt-3 pt-3 text-sm leading-relaxed whitespace-pre-line"
-                        style={{ color: "var(--text-mid)", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
-                        {note.body}
+                    {expanded && (
+                      <div className="mt-3 pt-3 space-y-3" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+                        {note.body && (
+                          <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "var(--text-mid)" }}>
+                            {note.body}
+                          </p>
+                        )}
+                        {note.drawing_data && <DrawingThumb data={note.drawing_data} maxHeight={200} />}
                       </div>
                     )}
                   </div>
