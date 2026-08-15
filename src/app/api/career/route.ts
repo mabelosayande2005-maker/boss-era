@@ -13,49 +13,52 @@ async function ensureTables() {
       id SERIAL PRIMARY KEY,
       role TEXT NOT NULL,
       company TEXT NOT NULL,
-      category TEXT DEFAULT 'Internship',
-      status TEXT DEFAULT 'wishlist',
-      deadline DATE,
-      date_applied DATE,
-      link TEXT,
-      notes TEXT,
       created_at TIMESTAMP DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'Internship'`;
+  await sql`ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'wishlist'`;
+  await sql`ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS deadline DATE`;
+  await sql`ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS date_applied DATE`;
+  await sql`ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS link TEXT`;
+  await sql`ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS notes TEXT`;
+
   await sql`
     CREATE TABLE IF NOT EXISTS brand_wishlist (
       id SERIAL PRIMARY KEY,
       brand TEXT NOT NULL,
-      platform TEXT DEFAULT 'TikTok',
-      category TEXT,
-      status TEXT DEFAULT 'dream',
-      email TEXT,
-      notes TEXT,
       created_at TIMESTAMP DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE brand_wishlist ADD COLUMN IF NOT EXISTS platform TEXT DEFAULT 'TikTok'`;
+  await sql`ALTER TABLE brand_wishlist ADD COLUMN IF NOT EXISTS category TEXT`;
+  await sql`ALTER TABLE brand_wishlist ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'dream'`;
+  await sql`ALTER TABLE brand_wishlist ADD COLUMN IF NOT EXISTS email TEXT`;
+  await sql`ALTER TABLE brand_wishlist ADD COLUMN IF NOT EXISTS notes TEXT`;
+
   await sql`
     CREATE TABLE IF NOT EXISTS networking (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
-      role TEXT,
-      company TEXT,
-      how_met TEXT,
-      date_met DATE,
-      follow_up_date DATE,
-      notes TEXT,
       created_at TIMESTAMP DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE networking ADD COLUMN IF NOT EXISTS role TEXT`;
+  await sql`ALTER TABLE networking ADD COLUMN IF NOT EXISTS company TEXT`;
+  await sql`ALTER TABLE networking ADD COLUMN IF NOT EXISTS how_met TEXT`;
+  await sql`ALTER TABLE networking ADD COLUMN IF NOT EXISTS date_met DATE`;
+  await sql`ALTER TABLE networking ADD COLUMN IF NOT EXISTS follow_up_date DATE`;
+  await sql`ALTER TABLE networking ADD COLUMN IF NOT EXISTS notes TEXT`;
+
   await sql`
     CREATE TABLE IF NOT EXISTS skills_certificates (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
-      source TEXT,
-      date_earned DATE,
       created_at TIMESTAMP DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE skills_certificates ADD COLUMN IF NOT EXISTS source TEXT`;
+  await sql`ALTER TABLE skills_certificates ADD COLUMN IF NOT EXISTS date_earned DATE`;
 }
 
 function normApp(a: Record<string, unknown>): Record<string, unknown> {
@@ -137,8 +140,8 @@ export async function POST(req: Request) {
       const { role, company, category, status, deadline, dateApplied, link, notes } = body;
       const [app] = await sql`
         INSERT INTO job_applications (role, company, category, status, deadline, date_applied, link, notes)
-        VALUES (${role}, ${company}, ${category || "Internship"}, ${status || "wishlist"},
-                ${deadline || null}, ${dateApplied || null}, ${link || null}, ${notes || null})
+        VALUES (${role}, ${company}, ${category ?? "Internship"}, ${status ?? "wishlist"},
+                ${deadline ?? null}, ${dateApplied ?? null}, ${link ?? null}, ${notes ?? null})
         RETURNING *
       `;
       return NextResponse.json({ app: normApp(app as Record<string, unknown>) });
@@ -148,9 +151,9 @@ export async function POST(req: Request) {
       const { role, company, category, status, deadline, dateApplied, link, notes } = body;
       const [app] = await sql`
         UPDATE job_applications SET
-          role = ${role}, company = ${company}, category = ${category || "Internship"},
-          status = ${status || "wishlist"}, deadline = ${deadline || null},
-          date_applied = ${dateApplied || null}, link = ${link || null}, notes = ${notes || null}
+          role = ${role}, company = ${company}, category = ${category ?? "Internship"},
+          status = ${status ?? "wishlist"}, deadline = ${deadline ?? null},
+          date_applied = ${dateApplied ?? null}, link = ${link ?? null}, notes = ${notes ?? null}
         WHERE id = ${id} RETURNING *
       `;
       return NextResponse.json({ app: normApp(app as Record<string, unknown>) });
@@ -172,8 +175,8 @@ export async function POST(req: Request) {
       const { brand, platform, category, status, email, notes } = body;
       const [b] = await sql`
         INSERT INTO brand_wishlist (brand, platform, category, status, email, notes)
-        VALUES (${brand}, ${platform || "TikTok"}, ${category || null},
-                ${status || "dream"}, ${email || null}, ${notes || null})
+        VALUES (${brand}, ${platform ?? "TikTok"}, ${category ?? null},
+                ${status ?? "dream"}, ${email ?? null}, ${notes ?? null})
         RETURNING *
       `;
       return NextResponse.json({ brand: b });
@@ -183,8 +186,8 @@ export async function POST(req: Request) {
       const { brand, platform, category, status, email, notes } = body;
       const [b] = await sql`
         UPDATE brand_wishlist SET
-          brand = ${brand}, platform = ${platform || "TikTok"}, category = ${category || null},
-          status = ${status || "dream"}, email = ${email || null}, notes = ${notes || null}
+          brand = ${brand}, platform = ${platform ?? "TikTok"}, category = ${category ?? null},
+          status = ${status ?? "dream"}, email = ${email ?? null}, notes = ${notes ?? null}
         WHERE id = ${id} RETURNING *
       `;
       return NextResponse.json({ brand: b });
@@ -199,8 +202,8 @@ export async function POST(req: Request) {
       const { name, role, company, howMet, dateMet, followUpDate, notes } = body;
       const [c] = await sql`
         INSERT INTO networking (name, role, company, how_met, date_met, follow_up_date, notes)
-        VALUES (${name}, ${role || null}, ${company || null}, ${howMet || null},
-                ${dateMet || null}, ${followUpDate || null}, ${notes || null})
+        VALUES (${name}, ${role ?? null}, ${company ?? null}, ${howMet ?? null},
+                ${dateMet ?? null}, ${followUpDate ?? null}, ${notes ?? null})
         RETURNING *
       `;
       return NextResponse.json({ contact: normContact(c as Record<string, unknown>) });
@@ -210,9 +213,9 @@ export async function POST(req: Request) {
       const { name, role, company, howMet, dateMet, followUpDate, notes } = body;
       const [c] = await sql`
         UPDATE networking SET
-          name = ${name}, role = ${role || null}, company = ${company || null},
-          how_met = ${howMet || null}, date_met = ${dateMet || null},
-          follow_up_date = ${followUpDate || null}, notes = ${notes || null}
+          name = ${name}, role = ${role ?? null}, company = ${company ?? null},
+          how_met = ${howMet ?? null}, date_met = ${dateMet ?? null},
+          follow_up_date = ${followUpDate ?? null}, notes = ${notes ?? null}
         WHERE id = ${id} RETURNING *
       `;
       return NextResponse.json({ contact: normContact(c as Record<string, unknown>) });
@@ -227,7 +230,7 @@ export async function POST(req: Request) {
       const { name, source, dateEarned } = body;
       const [skill] = await sql`
         INSERT INTO skills_certificates (name, source, date_earned)
-        VALUES (${name}, ${source || null}, ${dateEarned || null})
+        VALUES (${name}, ${source ?? null}, ${dateEarned ?? null})
         RETURNING *
       `;
       return NextResponse.json({ skill: normSkill(skill as Record<string, unknown>) });
