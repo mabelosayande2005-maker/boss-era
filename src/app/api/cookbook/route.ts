@@ -5,6 +5,8 @@ export const dynamic = "force-dynamic";
 
 async function ensureTables() {
   const sql = getDb();
+  // emoji removed from DEFAULT in DDL — embedded emoji in SQL strings can cause encoding
+  // issues in some environments; the value is always supplied explicitly from application code.
   await sql`CREATE TABLE IF NOT EXISTS recipes (
     id SERIAL PRIMARY KEY,
     title TEXT NOT NULL,
@@ -15,11 +17,13 @@ async function ensureTables() {
     ingredients TEXT,
     method TEXT,
     notes TEXT,
-    emoji TEXT DEFAULT '🍽️',
+    emoji TEXT,
     is_favourite BOOLEAN DEFAULT FALSE,
     photo_url TEXT,
     created_at TIMESTAMP DEFAULT NOW()
   )`;
+  await sql`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS prep_time_mins INTEGER`;
+  await sql`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS photo_url TEXT`;
 }
 
 export async function GET(req: Request) {
@@ -27,21 +31,14 @@ export async function GET(req: Request) {
     const sql = getDb();
     await ensureTables();
     const { searchParams } = new URL(req.url);
-    const cuisine = searchParams.get("cuisine");
     const fav = searchParams.get("fav");
-    let recipes;
-    if (cuisine && cuisine !== "All") {
-      recipes = await sql`SELECT * FROM recipes WHERE cuisine=${cuisine} ORDER BY is_favourite DESC, created_at DESC`;
-    } else if (fav === "true") {
-      recipes = await sql`SELECT * FROM recipes WHERE is_favourite=TRUE ORDER BY created_at DESC`;
-    } else {
-      recipes = await sql`SELECT * FROM recipes ORDER BY is_favourite DESC, created_at DESC`;
-    }
-    const cuisines = await sql`SELECT DISTINCT cuisine FROM recipes ORDER BY cuisine`;
-    return NextResponse.json({ recipes, cuisines: cuisines.map(c => c.cuisine) });
+    const recipes = fav === "true"
+      ? await sql`SELECT * FROM recipes WHERE is_favourite = TRUE ORDER BY created_at DESC`
+      : await sql`SELECT * FROM recipes ORDER BY is_favourite DESC, created_at DESC`;
+    return NextResponse.json({ recipes });
   } catch (e) {
     console.error("[cookbook GET]", e);
-    return NextResponse.json({ recipes: [], cuisines: [], error: String(e) }, { status: 500 });
+    return NextResponse.json({ recipes: [], error: String(e) }, { status: 500 });
   }
 }
 
@@ -53,34 +50,51 @@ export async function POST(req: Request) {
     const { action, id } = body;
 
     if (action === "add") {
-      const { title, description, cuisine, cookTimeMins, difficulty, ingredients, method, notes, emoji } = body;
+      const { title, description, photo_url, prepTimeMins, cookTimeMins, ingredients, method, notes } = body;
       const [recipe] = await sql`
-        INSERT INTO recipes (title, description, cuisine, cook_time_mins, difficulty, ingredients, method, notes, emoji)
-        VALUES (${title}, ${description || null}, ${cuisine || "Other"}, ${cookTimeMins || null}, ${difficulty || "Easy"}, ${ingredients || null}, ${method || null}, ${notes || null}, ${emoji || "🍽️"})
+        INSERT INTO recipes (title, description, photo_url, prep_time_mins, cook_time_mins, ingredients, method, notes)
+        VALUES (
+          ${title},
+          ${description ?? null},
+          ${photo_url ?? null},
+          ${prepTimeMins ?? null},
+          ${cookTimeMins ?? null},
+          ${ingredients ?? null},
+          ${method ?? null},
+          ${notes ?? null}
+        )
         RETURNING *
       `;
       return NextResponse.json({ recipe });
     }
 
     if (action === "update") {
-      const { title, description, cuisine, cookTimeMins, difficulty, ingredients, method, notes, emoji } = body;
+      const { title, description, photo_url, prepTimeMins, cookTimeMins, ingredients, method, notes } = body;
       const [recipe] = await sql`
-        UPDATE recipes SET title=${title}, description=${description||null}, cuisine=${cuisine||"Other"},
-          cook_time_mins=${cookTimeMins||null}, difficulty=${difficulty||"Easy"},
-          ingredients=${ingredients||null}, method=${method||null}, notes=${notes||null}, emoji=${emoji||"🍽️"}
-        WHERE id=${id} RETURNING *
+        UPDATE recipes SET
+          title = ${title},
+          description = ${description ?? null},
+          photo_url = ${photo_url ?? null},
+          prep_time_mins = ${prepTimeMins ?? null},
+          cook_time_mins = ${cookTimeMins ?? null},
+          ingredients = ${ingredients ?? null},
+          method = ${method ?? null},
+          notes = ${notes ?? null}
+        WHERE id = ${id}
+        RETURNING *
       `;
       return NextResponse.json({ recipe });
     }
 
     if (action === "toggle-fav") {
-      const [r] = await sql`SELECT is_favourite FROM recipes WHERE id=${id}`;
-      const [recipe] = await sql`UPDATE recipes SET is_favourite=${!r.is_favourite} WHERE id=${id} RETURNING *`;
+      const [r] = await sql`SELECT is_favourite FROM recipes WHERE id = ${id}`;
+      if (!r) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      const [recipe] = await sql`UPDATE recipes SET is_favourite = ${!r.is_favourite} WHERE id = ${id} RETURNING *`;
       return NextResponse.json({ recipe });
     }
 
     if (action === "delete") {
-      await sql`DELETE FROM recipes WHERE id=${id}`;
+      await sql`DELETE FROM recipes WHERE id = ${id}`;
       return NextResponse.json({ deleted: true });
     }
 
