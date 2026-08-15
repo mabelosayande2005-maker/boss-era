@@ -2,9 +2,20 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, parseISO } from "date-fns";
-import { Plus, Trash2, Pin, X } from "lucide-react";
+import { Plus, Trash2, Pin, X, Pencil, Type } from "lucide-react";
+import { DrawingCanvas } from "@/components/DrawingCanvas";
 
-type Note = { id: number; title: string; content: string | null; tags: string | null; color: string; is_pinned: boolean; created_at: string; updated_at: string };
+type Note = {
+  id: number;
+  title: string;
+  content: string | null;
+  tags: string | null;
+  color: string;
+  is_pinned: boolean;
+  created_at: string;
+  updated_at: string;
+  drawing_data: string | null;
+};
 
 const NOTE_COLORS = [
   { value: "#deeee8", label: "Sage" },
@@ -33,6 +44,12 @@ function NoteCard({ note, onPin, onDelete, onSelect }: {
           <p className="font-semibold" style={{ color: "var(--text-dark)" }}>{note.title}</p>
           {note.content && (
             <p className="text-sm mt-1 line-clamp-3" style={{ color: "var(--text-mid)", whiteSpace: "pre-line" }}>{note.content}</p>
+          )}
+          {note.drawing_data && (
+            <div className="mt-2 rounded-lg overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.08)", maxHeight: 88 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={note.drawing_data} alt="Drawing preview" style={{ width: "100%", objectFit: "cover", objectPosition: "top", display: "block" }} />
+            </div>
           )}
           {tags.length > 0 && (
             <div className="flex gap-1 mt-2 flex-wrap">
@@ -63,11 +80,13 @@ export default function NotesPage() {
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [editing, setEditing] = useState<Note | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [editorMode, setEditorMode] = useState<"text" | "draw">("text");
 
   const [eTitle, setETitle] = useState("");
   const [eContent, setEContent] = useState("");
   const [eTags, setETags] = useState("");
   const [eColor, setEColor] = useState(NOTE_COLORS[0].value);
+  const [eDrawing, setEDrawing] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -89,28 +108,33 @@ export default function NotesPage() {
   const openNew = () => {
     setEditing(null); setIsNew(true);
     setETitle(""); setEContent(""); setETags(""); setEColor(NOTE_COLORS[0].value);
+    setEDrawing(null); setEditorMode("text");
   };
 
   const openEdit = (note: Note) => {
     setEditing(note); setIsNew(false);
     setETitle(note.title); setEContent(note.content || ""); setETags(note.tags || ""); setEColor(note.color || NOTE_COLORS[0].value);
+    setEDrawing(note.drawing_data || null);
+    setEditorMode("text");
   };
 
   const saveNote = async () => {
     if (!eTitle.trim()) return;
     if (isNew) {
-      await post({ action: "add", title: eTitle, content: eContent || null, tags: eTags || null, color: eColor });
+      await post({ action: "add", title: eTitle, content: eContent || null, tags: eTags || null, color: eColor, drawing_data: eDrawing });
     } else if (editing) {
-      await post({ action: "update", id: editing.id, title: eTitle, content: eContent || null, tags: eTags || null, color: eColor });
+      await post({ action: "update", id: editing.id, title: eTitle, content: eContent || null, tags: eTags || null, color: eColor, drawing_data: eDrawing });
     }
     setEditing(null); setIsNew(false);
     fetchData();
   };
 
+  const closeEditor = () => { setEditing(null); setIsNew(false); };
+
   const pinned = notes.filter(n => n.is_pinned);
   const unpinned = notes.filter(n => !n.is_pinned);
-
   const isEditorOpen = isNew || editing !== null;
+  const editorKey = editing?.id ?? "new";
 
   return (
     <div className="space-y-5 py-2">
@@ -155,13 +179,74 @@ export default function NotesPage() {
             <h3 className="font-display font-bold italic text-lg" style={{ color: "var(--text-dark)" }}>
               {isNew ? "New note" : "Edit note"}
             </h3>
-            <button onClick={() => { setEditing(null); setIsNew(false); }}>
+            <button onClick={closeEditor}>
               <X size={18} style={{ color: "var(--text-soft)" }} />
             </button>
           </div>
-          <input value={eTitle} onChange={e => setETitle(e.target.value)} className="input-fairy w-full font-semibold" placeholder="Title…" style={{ background: "rgba(255,255,255,0.7)" }} />
-          <textarea value={eContent} onChange={e => setEContent(e.target.value)} className="input-fairy w-full text-sm leading-relaxed" rows={8} placeholder="Write anything here…" style={{ resize: "vertical", background: "rgba(255,255,255,0.7)" }} />
-          <input value={eTags} onChange={e => setETags(e.target.value)} className="input-fairy w-full text-sm" placeholder="Tags (comma separated, e.g. ideas, work, recipes)" style={{ background: "rgba(255,255,255,0.7)" }} />
+
+          <input
+            value={eTitle}
+            onChange={e => setETitle(e.target.value)}
+            className="input-fairy w-full font-semibold"
+            placeholder="Title…"
+            style={{ background: "rgba(255,255,255,0.7)" }}
+          />
+
+          {/* Text / Draw tabs */}
+          <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.45)" }}>
+            <button
+              onClick={() => setEditorMode("text")}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-sm font-medium transition-all"
+              style={{
+                background: editorMode === "text" ? "white" : "transparent",
+                color: editorMode === "text" ? "var(--text-dark)" : "var(--text-soft)",
+                boxShadow: editorMode === "text" ? "0 1px 4px rgba(0,0,0,0.1)" : undefined,
+              }}
+            >
+              <Type size={13} /> Text
+            </button>
+            <button
+              onClick={() => setEditorMode("draw")}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-sm font-medium transition-all"
+              style={{
+                background: editorMode === "draw" ? "white" : "transparent",
+                color: editorMode === "draw" ? "var(--text-dark)" : "var(--text-soft)",
+                boxShadow: editorMode === "draw" ? "0 1px 4px rgba(0,0,0,0.1)" : undefined,
+              }}
+            >
+              <Pencil size={13} /> Draw
+            </button>
+          </div>
+
+          {/* Text panel */}
+          <div style={{ display: editorMode === "text" ? "block" : "none" }}>
+            <textarea
+              value={eContent}
+              onChange={e => setEContent(e.target.value)}
+              className="input-fairy w-full text-sm leading-relaxed"
+              rows={8}
+              placeholder="Write anything here…"
+              style={{ resize: "vertical", background: "rgba(255,255,255,0.7)" }}
+            />
+          </div>
+
+          {/* Draw panel — always mounted to preserve canvas state, hidden when not active */}
+          <div style={{ display: editorMode === "draw" ? "block" : "none" }}>
+            <DrawingCanvas
+              key={editorKey}
+              initialData={eDrawing}
+              onChange={setEDrawing}
+            />
+          </div>
+
+          <input
+            value={eTags}
+            onChange={e => setETags(e.target.value)}
+            className="input-fairy w-full text-sm"
+            placeholder="Tags (comma separated, e.g. ideas, work, recipes)"
+            style={{ background: "rgba(255,255,255,0.7)" }}
+          />
+
           <div className="flex items-center justify-between">
             <div className="flex gap-2">
               {NOTE_COLORS.map(c => (
@@ -172,7 +257,7 @@ export default function NotesPage() {
               ))}
             </div>
             <div className="flex gap-2">
-              <button onClick={() => { setEditing(null); setIsNew(false); }} className="text-sm" style={{ color: "var(--text-soft)" }}>Cancel</button>
+              <button onClick={closeEditor} className="text-sm" style={{ color: "var(--text-soft)" }}>Cancel</button>
               <button onClick={saveNote} className="btn-primary text-sm">Save</button>
             </div>
           </div>

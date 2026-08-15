@@ -15,6 +15,7 @@ async function ensureTables() {
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
   )`;
+  await sql`ALTER TABLE notes ADD COLUMN IF NOT EXISTS drawing_data TEXT`;
 }
 
 export async function GET(req: Request) {
@@ -45,19 +46,19 @@ export async function POST(req: Request) {
     const { action, id } = body;
 
     if (action === "add") {
-      const { title, content, tags, color } = body;
+      const { title, content, tags, color, drawing_data } = body;
       const [note] = await sql`
-        INSERT INTO notes (title, content, tags, color)
-        VALUES (${title}, ${content || null}, ${tags || null}, ${color || "#deeee8"})
+        INSERT INTO notes (title, content, tags, color, drawing_data)
+        VALUES (${title}, ${content || null}, ${tags || null}, ${color || "#deeee8"}, ${drawing_data || null})
         RETURNING *
       `;
       return NextResponse.json({ note });
     }
 
     if (action === "update") {
-      const { title, content, tags, color } = body;
+      const { title, content, tags, color, drawing_data } = body;
       const [note] = await sql`
-        UPDATE notes SET title=${title}, content=${content||null}, tags=${tags||null}, color=${color||"#deeee8"}, updated_at=NOW()
+        UPDATE notes SET title=${title}, content=${content||null}, tags=${tags||null}, color=${color||"#deeee8"}, drawing_data=${drawing_data||null}, updated_at=NOW()
         WHERE id=${id} RETURNING *
       `;
       return NextResponse.json({ note });
