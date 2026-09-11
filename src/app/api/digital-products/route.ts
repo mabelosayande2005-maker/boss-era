@@ -17,6 +17,7 @@ async function ensureTable() {
     amount NUMERIC(10,2),
     created_at TIMESTAMP DEFAULT NOW()
   )`;
+  await sql`ALTER TABLE digital_product_sales ADD COLUMN IF NOT EXISTS user_handle TEXT`;
 }
 
 function normalizeSale(e: Record<string, unknown>) {
@@ -58,12 +59,12 @@ export async function POST(req: Request) {
     const sql = getDb();
     await ensureTable();
     const body = await req.json();
-    const { action, id, customerEmail, platform, product, saleDate, amount } = body;
+    const { action, id, customerEmail, userHandle, platform, product, saleDate, amount } = body;
 
     if (action === "add") {
       const [sale] = await sql`
-        INSERT INTO digital_product_sales (customer_email, platform, product, sale_date, amount)
-        VALUES (${customerEmail || null}, ${platform}, ${product}, ${saleDate || null}, ${amount || null})
+        INSERT INTO digital_product_sales (customer_email, user_handle, platform, product, sale_date, amount)
+        VALUES (${customerEmail || null}, ${userHandle || null}, ${platform}, ${product}, ${saleDate || null}, ${amount || null})
         RETURNING *
       `;
       return NextResponse.json({ sale: normalizeSale(sale as Record<string, unknown>) });
@@ -73,6 +74,7 @@ export async function POST(req: Request) {
       const [sale] = await sql`
         UPDATE digital_product_sales
         SET customer_email = ${customerEmail || null},
+            user_handle = ${userHandle || null},
             platform = ${platform},
             product = ${product},
             sale_date = ${saleDate || null},

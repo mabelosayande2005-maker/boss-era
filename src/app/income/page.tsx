@@ -8,6 +8,7 @@ import { INCOME_SOURCES, SUMMER_GOAL, summerProgress } from "@/lib/utils";
 type DigitalSale = {
   id: number;
   customer_email: string | null;
+  user_handle: string | null;
   platform: string;
   product: string;
   sale_date: string | null;
@@ -131,6 +132,7 @@ export default function IncomePage() {
   const [expandedDPSale, setExpandedDPSale] = useState<number | null>(null);
   const [dpForm, setDPForm] = useState({
     customerEmail: "",
+    userHandle: "",
     platform: "TikTok",
     product: "",
     saleDate: "",
@@ -414,7 +416,7 @@ export default function IncomePage() {
 
   const openAddDP = () => {
     setEditDPSale(null);
-    setDPForm({ customerEmail: "", platform: "TikTok", product: "", saleDate: "", amount: "" });
+    setDPForm({ customerEmail: "", userHandle: "", platform: "TikTok", product: "", saleDate: "", amount: "" });
     setShowDPForm(true);
   };
 
@@ -422,6 +424,7 @@ export default function IncomePage() {
     setEditDPSale(sale);
     setDPForm({
       customerEmail: sale.customer_email || "",
+      userHandle: sale.user_handle || "",
       platform: sale.platform,
       product: sale.product,
       saleDate: sale.sale_date?.split("T")[0] || "",
@@ -439,6 +442,7 @@ export default function IncomePage() {
         action: editDPSale ? "update" : "add",
         id: editDPSale?.id,
         customerEmail: dpForm.customerEmail || null,
+        userHandle: dpForm.userHandle || null,
         platform: dpForm.platform,
         product: dpForm.product.trim(),
         saleDate: dpForm.saleDate || null,
@@ -1447,7 +1451,7 @@ export default function IncomePage() {
 
 // ── Digital Products Tab ──────────────────────────────────────────────────────
 
-type DPFormState = { customerEmail: string; platform: string; product: string; saleDate: string; amount: string };
+type DPFormState = { customerEmail: string; userHandle: string; platform: string; product: string; saleDate: string; amount: string };
 
 function DigitalProductsTab({
   sales,
@@ -1607,6 +1611,9 @@ function DigitalProductsTab({
                       <div><span style={{ color: "var(--text-soft)" }}>Platform: </span><span>{PLATFORM_EMOJI[sale.platform]} {sale.platform}</span></div>
                       <div><span style={{ color: "var(--text-soft)" }}>Amount: </span><span className="font-bold" style={{ color: "var(--gold)" }}>{formatGBP(sale.amount)}</span></div>
                       <div><span style={{ color: "var(--text-soft)" }}>Date: </span><span>{sale.sale_date ? format(parseISO(sale.sale_date), "d MMM yyyy") : "—"}</span></div>
+                      {sale.user_handle && (
+                        <div><span style={{ color: "var(--text-soft)" }}>Handle: </span><span className="font-medium">{sale.user_handle}</span></div>
+                      )}
                       {sale.customer_email && (
                         <div className="col-span-2"><span style={{ color: "var(--text-soft)" }}>Customer: </span><span>{sale.customer_email}</span></div>
                       )}
@@ -1658,6 +1665,16 @@ function DigitalProductsTab({
                   <option key={p} value={p}>{PLATFORM_EMOJI[p]} {p}</option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>User ID / Handle <span style={{ color: "var(--text-soft)", fontWeight: 400 }}>(optional)</span></label>
+              <input
+                className="input-fairy"
+                placeholder="e.g. @studyglow, tiktok_username"
+                value={form.userHandle}
+                onChange={e => onFormChange("userHandle", e.target.value)}
+              />
             </div>
 
             <div>
