@@ -5,6 +5,17 @@ import { format, parseISO } from "date-fns";
 import { Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { INCOME_SOURCES, SUMMER_GOAL, summerProgress } from "@/lib/utils";
 
+type DigitalSale = {
+  id: number;
+  customer_email: string | null;
+  platform: string;
+  product: string;
+  sale_date: string | null;
+  amount: string | null;
+};
+
+type PlatformBreakdown = Record<string, { count: number; revenue: number }>;
+
 type IncomeEntry = {
   id: number;
   source: string;
@@ -91,7 +102,19 @@ function getSADeadline(taxYear: string): string {
   return `5 October ${start + 1}`;
 }
 
+const PLATFORMS = ["TikTok", "Instagram", "Facebook", "Other"];
+const PLATFORM_EMOJI: Record<string, string> = {
+  TikTok: "🎵",
+  Instagram: "📸",
+  Facebook: "📘",
+  Other: "🛒",
+};
+
+type ActiveTab = "overview" | "digital-products";
+
 export default function IncomePage() {
+  const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
+
   const [entries, setEntries] = useState<IncomeEntry[]>([]);
   const [totals, setTotals] = useState<Totals>({ total_net: "0", total_gross: "0" });
   const [bySource, setBySource] = useState<BySource[]>([]);
@@ -99,6 +122,20 @@ export default function IncomePage() {
   const [editEntry, setEditEntry] = useState<IncomeEntry | null>(null);
   const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [digitalSales, setDigitalSales] = useState<DigitalSale[]>([]);
+  const [digitalTotalRevenue, setDigitalTotalRevenue] = useState(0);
+  const [digitalByPlatform, setDigitalByPlatform] = useState<PlatformBreakdown>({});
+  const [showDPForm, setShowDPForm] = useState(false);
+  const [editDPSale, setEditDPSale] = useState<DigitalSale | null>(null);
+  const [expandedDPSale, setExpandedDPSale] = useState<number | null>(null);
+  const [dpForm, setDPForm] = useState({
+    customerEmail: "",
+    platform: "TikTok",
+    product: "",
+    saleDate: "",
+    amount: "",
+  });
 
   const [payslips, setPayslips] = useState<PayslipEntry[]>([]);
   const [latestTaxCode, setLatestTaxCode] = useState<string | null>(null);
@@ -171,11 +208,22 @@ export default function IncomePage() {
     } catch {}
   }, []);
 
+  const fetchDigitalSales = useCallback(async () => {
+    try {
+      const res = await fetch("/api/digital-products", { cache: "no-store" });
+      const data = await res.json();
+      setDigitalSales(data.sales || []);
+      setDigitalTotalRevenue(data.totalRevenue || 0);
+      setDigitalByPlatform(data.byPlatform || {});
+    } catch {}
+  }, []);
+
   useEffect(() => {
     fetchData();
     fetchPayslips();
     fetchSEEntries();
-  }, [fetchData, fetchPayslips, fetchSEEntries]);
+    fetchDigitalSales();
+  }, [fetchData, fetchPayslips, fetchSEEntries, fetchDigitalSales]);
 
   const handleFormChange = (field: string, value: string) => {
     setForm(prev => {
@@ -364,6 +412,53 @@ export default function IncomePage() {
     fetchSEEntries();
   };
 
+  const openAddDP = () => {
+    setEditDPSale(null);
+    setDPForm({ customerEmail: "", platform: "TikTok", product: "", saleDate: "", amount: "" });
+    setShowDPForm(true);
+  };
+
+  const openEditDP = (sale: DigitalSale) => {
+    setEditDPSale(sale);
+    setDPForm({
+      customerEmail: sale.customer_email || "",
+      platform: sale.platform,
+      product: sale.product,
+      saleDate: sale.sale_date?.split("T")[0] || "",
+      amount: sale.amount || "",
+    });
+    setShowDPForm(true);
+  };
+
+  const saveDPSale = async () => {
+    if (!dpForm.product.trim() || !dpForm.platform) return;
+    await fetch("/api/digital-products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: editDPSale ? "update" : "add",
+        id: editDPSale?.id,
+        customerEmail: dpForm.customerEmail || null,
+        platform: dpForm.platform,
+        product: dpForm.product.trim(),
+        saleDate: dpForm.saleDate || null,
+        amount: dpForm.amount ? parseFloat(dpForm.amount) : null,
+      }),
+    });
+    setShowDPForm(false);
+    setEditDPSale(null);
+    fetchDigitalSales();
+  };
+
+  const deleteDPSale = async (id: number) => {
+    await fetch("/api/digital-products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", id }),
+    });
+    fetchDigitalSales();
+  };
+
   const totalNet = parseFloat(totals.total_net || "0");
   const goalProgress = Math.min(100, (totalNet / SUMMER_GOAL) * 100);
   const summerProg = summerProgress();
@@ -398,6 +493,46 @@ export default function IncomePage() {
 
   return (
     <div className="space-y-5 py-2">
+      {/* Tab nav */}
+      <div className="flex gap-2 p-1 rounded-2xl" style={{ background: "rgba(255,255,255,0.6)", border: "1.5px solid rgba(200,184,224,0.25)" }}>
+        {([
+          { id: "overview", label: "💸 Overview" },
+          { id: "digital-products", label: "✨ Digital Products" },
+        ] as const).map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className="flex-1 py-2 px-3 rounded-xl text-sm font-medium transition-all"
+            style={
+              activeTab === tab.id
+                ? { background: "var(--sage)", color: "#fff" }
+                : { color: "var(--text-mid)" }
+            }
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "digital-products" ? (
+        <DigitalProductsTab
+          sales={digitalSales}
+          totalRevenue={digitalTotalRevenue}
+          byPlatform={digitalByPlatform}
+          showForm={showDPForm}
+          editSale={editDPSale}
+          expandedSale={expandedDPSale}
+          form={dpForm}
+          onOpenAdd={openAddDP}
+          onOpenEdit={openEditDP}
+          onDelete={deleteDPSale}
+          onFormChange={(field, value) => setDPForm(prev => ({ ...prev, [field]: value }))}
+          onSave={saveDPSale}
+          onCancel={() => { setShowDPForm(false); setEditDPSale(null); }}
+          onExpandToggle={id => setExpandedDPSale(expandedDPSale === id ? null : id)}
+        />
+      ) : (<>
+
       {/* Header */}
       <div className="card px-6 py-5" style={{
         background: "linear-gradient(135deg, rgba(253,248,236,0.95) 0%, rgba(250,246,240,0.9) 50%, rgba(222,238,232,0.8) 100%)",
@@ -1302,6 +1437,267 @@ export default function IncomePage() {
               </div>
               <div className="text-xs mt-1" style={{ color: "var(--text-soft)" }}>total gross</div>
             </div>
+          </div>
+        </div>
+      )}
+      </>)}
+    </div>
+  );
+}
+
+// ── Digital Products Tab ──────────────────────────────────────────────────────
+
+type DPFormState = { customerEmail: string; platform: string; product: string; saleDate: string; amount: string };
+
+function DigitalProductsTab({
+  sales,
+  totalRevenue,
+  byPlatform,
+  showForm,
+  editSale,
+  expandedSale,
+  form,
+  onOpenAdd,
+  onOpenEdit,
+  onDelete,
+  onFormChange,
+  onSave,
+  onCancel,
+  onExpandToggle,
+}: {
+  sales: DigitalSale[];
+  totalRevenue: number;
+  byPlatform: PlatformBreakdown;
+  showForm: boolean;
+  editSale: DigitalSale | null;
+  expandedSale: number | null;
+  form: DPFormState;
+  onOpenAdd: () => void;
+  onOpenEdit: (s: DigitalSale) => void;
+  onDelete: (id: number) => void;
+  onFormChange: (field: string, value: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  onExpandToggle: (id: number) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      {/* Summary card */}
+      <div
+        className="card px-6 py-5"
+        style={{ background: "linear-gradient(135deg, rgba(253,248,236,0.95) 0%, rgba(222,238,232,0.8) 100%)" }}
+      >
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <div className="text-xs uppercase tracking-wide font-medium mb-1" style={{ color: "var(--text-soft)" }}>
+              StudyGlow · Digital Products
+            </div>
+            <h2 className="font-display font-black italic text-3xl" style={{ color: "var(--text-dark)" }}>
+              ✨ Sales Tracker
+            </h2>
+          </div>
+          <button className="btn-primary flex items-center gap-2" onClick={onOpenAdd}>
+            <Plus size={14} />
+            Add Sale
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl px-4 py-3 text-center" style={{ background: "rgba(255,255,255,0.6)" }}>
+            <div className="font-display font-bold italic text-2xl" style={{ color: "var(--gold)" }}>
+              {formatGBP(totalRevenue)}
+            </div>
+            <div className="text-xs mt-0.5" style={{ color: "var(--text-soft)" }}>total revenue</div>
+          </div>
+          <div className="rounded-xl px-4 py-3 text-center" style={{ background: "rgba(255,255,255,0.6)" }}>
+            <div className="font-display font-bold italic text-2xl" style={{ color: "var(--sage)" }}>
+              {sales.length}
+            </div>
+            <div className="text-xs mt-0.5" style={{ color: "var(--text-soft)" }}>total sales</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Platform breakdown */}
+      {Object.keys(byPlatform).length > 0 && (
+        <div className="card px-5 py-4">
+          <h3 className="font-display font-bold italic text-lg mb-3" style={{ color: "var(--text-dark)" }}>
+            By Platform
+          </h3>
+          <div className="space-y-3">
+            {PLATFORMS.filter(p => byPlatform[p]).map(p => {
+              const data = byPlatform[p];
+              const pct = totalRevenue > 0 ? (data.revenue / totalRevenue) * 100 : 0;
+              return (
+                <div key={p} className="flex items-center gap-3">
+                  <span className="text-lg w-7 text-center">{PLATFORM_EMOJI[p]}</span>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm font-medium" style={{ color: "var(--text-dark)" }}>
+                        {p}
+                        <span className="ml-1.5 text-xs font-normal" style={{ color: "var(--text-soft)" }}>
+                          ({data.count} sale{data.count !== 1 ? "s" : ""})
+                        </span>
+                      </span>
+                      <span className="text-sm font-bold" style={{ color: "var(--gold)" }}>{formatGBP(data.revenue)}</span>
+                    </div>
+                    <div className="progress-track h-1.5">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: "var(--sage-light)" }} />
+                    </div>
+                  </div>
+                  <span className="text-xs w-10 text-right" style={{ color: "var(--text-soft)" }}>{pct.toFixed(0)}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Sales list */}
+      <div className="card px-5 py-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-display font-bold italic text-lg" style={{ color: "var(--text-dark)" }}>All Sales</h3>
+          <span className="tag tag-sage">{sales.length} entries</span>
+        </div>
+
+        {sales.length === 0 ? (
+          <div className="text-center py-8">
+            <div className="text-3xl mb-3">✨</div>
+            <p className="font-display font-bold italic text-lg mb-1" style={{ color: "var(--text-dark)" }}>No sales logged yet</p>
+            <p className="text-sm mb-4" style={{ color: "var(--text-soft)" }}>Track your StudyGlow flashcard & digital product sales</p>
+            <button className="btn-primary" onClick={onOpenAdd}>Add first sale ✦</button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {sales.map(sale => (
+              <div key={sale.id}>
+                <div
+                  className="flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all"
+                  style={{
+                    background: expandedSale === sale.id ? "rgba(143,173,160,0.1)" : "rgba(250,246,240,0.8)",
+                    border: "1.5px solid rgba(200,184,224,0.2)",
+                  }}
+                  onClick={() => onExpandToggle(sale.id)}
+                >
+                  <span className="text-lg">{PLATFORM_EMOJI[sale.platform] || "🛒"}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm truncate" style={{ color: "var(--text-dark)" }}>{sale.product}</div>
+                    <div className="text-xs" style={{ color: "var(--text-soft)" }}>
+                      {sale.platform}
+                      {sale.sale_date && ` · ${format(parseISO(sale.sale_date), "d MMM yyyy")}`}
+                      {sale.customer_email && ` · ${sale.customer_email}`}
+                    </div>
+                  </div>
+                  <div className="font-bold text-sm flex-shrink-0" style={{ color: "var(--gold)" }}>
+                    {formatGBP(sale.amount)}
+                  </div>
+                  {expandedSale === sale.id
+                    ? <ChevronUp size={14} style={{ color: "var(--text-soft)", flexShrink: 0 }} />
+                    : <ChevronDown size={14} style={{ color: "var(--text-soft)", flexShrink: 0 }} />
+                  }
+                </div>
+
+                {expandedSale === sale.id && (
+                  <div
+                    className="mx-2 px-4 py-3 rounded-b-xl mb-1 -mt-1"
+                    style={{ background: "rgba(143,173,160,0.07)", border: "1.5px solid rgba(143,173,160,0.2)", borderTop: "none" }}
+                  >
+                    <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                      <div><span style={{ color: "var(--text-soft)" }}>Product: </span><span className="font-medium">{sale.product}</span></div>
+                      <div><span style={{ color: "var(--text-soft)" }}>Platform: </span><span>{PLATFORM_EMOJI[sale.platform]} {sale.platform}</span></div>
+                      <div><span style={{ color: "var(--text-soft)" }}>Amount: </span><span className="font-bold" style={{ color: "var(--gold)" }}>{formatGBP(sale.amount)}</span></div>
+                      <div><span style={{ color: "var(--text-soft)" }}>Date: </span><span>{sale.sale_date ? format(parseISO(sale.sale_date), "d MMM yyyy") : "—"}</span></div>
+                      {sale.customer_email && (
+                        <div className="col-span-2"><span style={{ color: "var(--text-soft)" }}>Customer: </span><span>{sale.customer_email}</span></div>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="btn-primary text-xs px-3 py-1" onClick={() => { onOpenEdit(sale); }}>Edit</button>
+                      <button
+                        className="flex items-center gap-1 text-xs px-3 py-1 rounded-full transition-all"
+                        style={{ background: "var(--rose-pale)", color: "#b06070", border: "1px solid rgba(232,180,184,0.4)" }}
+                        onClick={() => onDelete(sale.id)}
+                      >
+                        <Trash2 size={11} />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Add/Edit form */}
+      {showForm && (
+        <div className="card px-5 py-5" style={{ border: "1.5px solid rgba(143,173,160,0.4)" }}>
+          <h3 className="font-display font-bold italic text-xl mb-4" style={{ color: "var(--text-dark)" }}>
+            {editSale ? "Edit Sale" : "Add Sale ✦"}
+          </h3>
+          <div className="grid md:grid-cols-2 gap-3">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Product / Resource *</label>
+              <input
+                className="input-fairy"
+                placeholder="e.g. StudyGlow Flashcards Vol.1, Biology Notes"
+                value={form.product}
+                onChange={e => onFormChange("product", e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Platform *</label>
+              <select
+                className="input-fairy"
+                value={form.platform}
+                onChange={e => onFormChange("platform", e.target.value)}
+              >
+                {PLATFORMS.map(p => (
+                  <option key={p} value={p}>{PLATFORM_EMOJI[p]} {p}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Date of purchase</label>
+              <input
+                type="date"
+                className="input-fairy"
+                value={form.saleDate}
+                onChange={e => onFormChange("saleDate", e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Amount paid (£)</label>
+              <input
+                type="number"
+                step="0.01"
+                className="input-fairy"
+                placeholder="0.00"
+                value={form.amount}
+                onChange={e => onFormChange("amount", e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "var(--text-soft)" }}>Customer email</label>
+              <input
+                type="email"
+                className="input-fairy"
+                placeholder="customer@example.com"
+                value={form.customerEmail}
+                onChange={e => onFormChange("customerEmail", e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex gap-3 mt-4">
+            <button className="btn-primary flex-1" onClick={onSave}>
+              {editSale ? "Save changes ✦" : "Add sale ✦"}
+            </button>
+            <button className="btn-primary btn-rose flex-1" onClick={onCancel}>Cancel</button>
           </div>
         </div>
       )}
