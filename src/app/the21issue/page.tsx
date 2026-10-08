@@ -131,7 +131,7 @@ const CHAPTERS: Chapter[] = [
       { id: "ch5-1", label: "Vision board", pages: 2, badge: "2–4 pages", badgeVariant: "pages" },
       { id: "ch5-2", label: "Goal pages", pages: 1, badge: "1 per goal", badgeVariant: "note" },
       { id: "ch5-3", label: "Passport ready", pages: 4, badge: "4 pages", badgeVariant: "pages" },
-      { id: "ch5-4", label: "Dream Man", pages: 0, badge: "final polish", badgeVariant: "note" },
+      { id: "ch5-4", label: "Dream Man", pages: 1, badge: "1 page", badgeVariant: "pages" },
     ],
   },
   {
