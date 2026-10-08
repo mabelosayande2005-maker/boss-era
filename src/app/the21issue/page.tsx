@@ -25,6 +25,9 @@ type Chapter = {
 };
 
 // ─── data (exact order from original checklist) ───────────────────────────────
+// IMPORTANT: never change an item's `id` once set — ids are the localStorage keys
+// that preserve Mabel's ticked state across code updates. Only add new ids; never
+// renumber or rename existing ones, even if you reorder or rename the label.
 
 const CHAPTERS: Chapter[] = [
   {
@@ -34,11 +37,11 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--sage)",
     bg: "var(--sage-pale)",
     items: [
-      { id: "s1", label: "Gather all photos & memories", pages: 0, badge: null },
-      { id: "s2", label: "Collect written content from friends", pages: 0, badge: null },
-      { id: "s3", label: "Set up Canva template & cover design", pages: 0, badge: null },
-      { id: "s4", label: "Choose fonts, colour palette & aesthetic", pages: 0, badge: null },
-      { id: "s5", label: "Plan final page count & Mixam spec", pages: 0, badge: null },
+      { id: "setup-gather-photos",    label: "Gather all photos & memories",              pages: 0, badge: null },
+      { id: "setup-collect-content",  label: "Collect written content from friends",       pages: 0, badge: null },
+      { id: "setup-canva-template",   label: "Set up Canva template & cover design",       pages: 0, badge: null },
+      { id: "setup-fonts-palette",    label: "Choose fonts, colour palette & aesthetic",   pages: 0, badge: null },
+      { id: "setup-page-count",       label: "Plan final page count & Mixam spec",         pages: 0, badge: null },
     ],
   },
   {
@@ -48,9 +51,9 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--rose)",
     bg: "var(--rose-pale)",
     items: [
-      { id: "c1", label: "Front cover", pages: 0, badge: null },
-      { id: "c2", label: "Spine", pages: 0, badge: null },
-      { id: "c3", label: "Inside front cover: Contents", pages: 0, badge: "do last", badgeVariant: "note" },
+      { id: "cover-front",    label: "Front cover",                     pages: 0, badge: null },
+      { id: "cover-spine",    label: "Spine",                           pages: 0, badge: null },
+      { id: "cover-ifc",      label: "Inside front cover: Contents",    pages: 0, badge: "do last", badgeVariant: "note" },
     ],
   },
   {
@@ -60,10 +63,10 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--lavender)",
     bg: "var(--lavender-pale)",
     items: [
-      { id: "f1", label: "Editor's letter", pages: 1, badge: "1 page", badgeVariant: "pages" },
-      { id: "f2", label: "Meet the editor", pages: 2, badge: "2 pages", badgeVariant: "pages" },
-      { id: "f3", label: "Notes from my people", pages: 1, badge: "1–2 pages", badgeVariant: "pages" },
-      { id: "f4", label: "21 things I learned", pages: 2, badge: "2 pages", badgeVariant: "pages" },
+      { id: "front-editors-letter",   label: "Editor's letter",          pages: 1, badge: "1 page",    badgeVariant: "pages" },
+      { id: "front-meet-editor",      label: "Meet the editor",          pages: 2, badge: "2 pages",   badgeVariant: "pages" },
+      { id: "front-notes-people",     label: "Notes from my people",     pages: 1, badge: "1–2 pages", badgeVariant: "pages" },
+      { id: "front-21-things",        label: "21 things I learned",      pages: 2, badge: "2 pages",   badgeVariant: "pages" },
     ],
   },
   {
@@ -73,8 +76,8 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--gold)",
     bg: "rgba(253,248,232,0.9)",
     items: [
-      { id: "ch1-1", label: "Year in review", pages: 4, badge: "4 pages", badgeVariant: "pages" },
-      { id: "ch1-2", label: "Brainstorm page", pages: 1, badge: "1 page", badgeVariant: "pages" },
+      { id: "ch1-year-in-review",  label: "Year in review",   pages: 4, badge: "4 pages", badgeVariant: "pages" },
+      { id: "ch1-brainstorm",      label: "Brainstorm page",  pages: 1, badge: "1 page",  badgeVariant: "pages" },
     ],
   },
   {
@@ -84,13 +87,13 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--sage)",
     bg: "var(--sage-pale)",
     items: [
-      { id: "ch2-1", label: "Routines", pages: 2, badge: "2 pages", badgeVariant: "pages" },
-      { id: "ch2-2", label: "How I plan my day (one of each)", pages: 1, badge: "1–2 pages", badgeVariant: "pages" },
-      { id: "ch2-3", label: "The glow-up", pages: 2, badge: "2–4 pages", badgeVariant: "pages" },
-      { id: "ch2-4", label: "Style edit", pages: 4, badge: "4 pages", badgeVariant: "pages" },
-      { id: "ch2-5", label: "Solo date bucket list", pages: 2, badge: "2 pages", badgeVariant: "pages" },
-      { id: "ch2-6", label: "Optional: What's in Mabel's bag, fragrance and make-up", pages: 2, badge: "2 pages", badgeVariant: "pages" },
-      { id: "ch2-7", label: "Brainstorm page", pages: 1, badge: "1 page", badgeVariant: "pages" },
+      { id: "ch2-routines",       label: "Routines",                                                    pages: 2, badge: "2 pages",   badgeVariant: "pages" },
+      { id: "ch2-plan-my-day",    label: "How I plan my day (one of each)",                             pages: 1, badge: "1–2 pages", badgeVariant: "pages" },
+      { id: "ch2-glow-up",        label: "The glow-up",                                                 pages: 2, badge: "2–4 pages", badgeVariant: "pages" },
+      { id: "ch2-style-edit",     label: "Style edit",                                                  pages: 4, badge: "4 pages",   badgeVariant: "pages" },
+      { id: "ch2-solo-date",      label: "Solo date bucket list",                                       pages: 2, badge: "2 pages",   badgeVariant: "pages" },
+      { id: "ch2-whats-in-bag",   label: "Optional: What's in Mabel's bag, fragrance and make-up",     pages: 2, badge: "2 pages",   badgeVariant: "pages" },
+      { id: "ch2-brainstorm",     label: "Brainstorm page",                                             pages: 1, badge: "1 page",    badgeVariant: "pages" },
     ],
   },
   {
@@ -100,10 +103,10 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--rose)",
     bg: "var(--rose-pale)",
     items: [
-      { id: "ch3-1", label: "Income streams, investments and balance", pages: 4, badge: "4 pages", badgeVariant: "pages" },
-      { id: "ch3-2", label: "The creator page", pages: 2, badge: "2 pages", badgeVariant: "pages" },
-      { id: "ch3-3", label: "Career mindmap", pages: 2, badge: "2 pages", badgeVariant: "pages" },
-      { id: "ch3-4", label: "Brainstorm page", pages: 1, badge: "1 page", badgeVariant: "pages" },
+      { id: "ch3-income-streams",  label: "Income streams, investments and balance",  pages: 4, badge: "4 pages", badgeVariant: "pages" },
+      { id: "ch3-creator-page",    label: "The creator page",                         pages: 2, badge: "2 pages", badgeVariant: "pages" },
+      { id: "ch3-career-mindmap",  label: "Career mindmap",                           pages: 2, badge: "2 pages", badgeVariant: "pages" },
+      { id: "ch3-brainstorm",      label: "Brainstorm page",                          pages: 1, badge: "1 page",  badgeVariant: "pages" },
     ],
   },
   {
@@ -113,12 +116,12 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--lavender)",
     bg: "var(--lavender-pale)",
     items: [
-      { id: "ch4-1", label: "My journey with God, faith and testimony", pages: 4, badge: "4 pages", badgeVariant: "pages" },
-      { id: "ch4-2", label: "Letter to God", pages: 1, badge: "1–2 pages", badgeVariant: "pages" },
-      { id: "ch4-3", label: "My prayers", pages: 2, badge: "2 pages", badgeVariant: "pages" },
-      { id: "ch4-4", label: "Answered prayers", pages: 2, badge: "2 pages", badgeVariant: "pages" },
-      { id: "ch4-5", label: "Journal pages", pages: 4, badge: "4–6 pages", badgeVariant: "pages" },
-      { id: "ch4-6", label: "Brainstorm page", pages: 1, badge: "1 page", badgeVariant: "pages" },
+      { id: "ch4-journey-god",        label: "My journey with God, faith and testimony",  pages: 4, badge: "4 pages",   badgeVariant: "pages" },
+      { id: "ch4-letter-god",         label: "Letter to God",                             pages: 1, badge: "1–2 pages", badgeVariant: "pages" },
+      { id: "ch4-my-prayers",         label: "My prayers",                                pages: 2, badge: "2 pages",   badgeVariant: "pages" },
+      { id: "ch4-answered-prayers",   label: "Answered prayers",                          pages: 2, badge: "2 pages",   badgeVariant: "pages" },
+      { id: "ch4-journal-pages",      label: "Journal pages",                             pages: 4, badge: "4–6 pages", badgeVariant: "pages" },
+      { id: "ch4-brainstorm",         label: "Brainstorm page",                           pages: 1, badge: "1 page",    badgeVariant: "pages" },
     ],
   },
   {
@@ -128,10 +131,10 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--gold)",
     bg: "rgba(253,248,232,0.9)",
     items: [
-      { id: "ch5-1", label: "Vision board", pages: 2, badge: "2–4 pages", badgeVariant: "pages" },
-      { id: "ch5-2", label: "Goal pages", pages: 1, badge: "1 per goal", badgeVariant: "note" },
-      { id: "ch5-3", label: "Passport ready", pages: 4, badge: "4 pages", badgeVariant: "pages" },
-      { id: "ch5-4", label: "Dream Man", pages: 1, badge: "1 page", badgeVariant: "pages" },
+      { id: "ch5-vision-board",    label: "Vision board",     pages: 2, badge: "2–4 pages", badgeVariant: "pages" },
+      { id: "ch5-goal-pages",      label: "Goal pages",       pages: 1, badge: "1 per goal", badgeVariant: "note" },
+      { id: "ch5-passport-ready",  label: "Passport ready",   pages: 4, badge: "4 pages",   badgeVariant: "pages" },
+      { id: "ch5-dream-man",       label: "Dream Man",        pages: 1, badge: "1 page",    badgeVariant: "pages" },
     ],
   },
   {
@@ -141,9 +144,9 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--rose)",
     bg: "var(--rose-pale)",
     items: [
-      { id: "b1", label: "Sudoku", pages: 2, badge: "2 pages", badgeVariant: "pages" },
-      { id: "b2", label: "Inside back cover: Letter to 22-year-old me", pages: 1, badge: "1 page", badgeVariant: "pages" },
-      { id: "b3", label: "Back cover", pages: 0, badge: null },
+      { id: "back-sudoku",      label: "Sudoku",                                       pages: 2, badge: "2 pages", badgeVariant: "pages" },
+      { id: "back-ibc-letter",  label: "Inside back cover: Letter to 22-year-old me", pages: 1, badge: "1 page",  badgeVariant: "pages" },
+      { id: "back-cover",       label: "Back cover",                                   pages: 0, badge: null },
     ],
   },
   {
@@ -153,12 +156,12 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--sage)",
     bg: "var(--sage-pale)",
     items: [
-      { id: "p1", label: "Delete the colour page", pages: 0, badge: null },
-      { id: "p2", label: "Check every heart page number", pages: 0, badge: null },
-      { id: "p3", label: "Proofread and check photos are sharp", pages: 0, badge: null },
-      { id: "p4", label: "Make sure the page count is even", pages: 0, badge: null },
-      { id: "p5", label: "Export PDF Print with bleed", pages: 0, badge: null },
-      { id: "p6", label: "Order on Mixam by 12 November", pages: 0, badge: null },
+      { id: "print-delete-colour",    label: "Delete the colour page",                pages: 0, badge: null },
+      { id: "print-check-pg-numbers", label: "Check every heart page number",         pages: 0, badge: null },
+      { id: "print-proofread",        label: "Proofread and check photos are sharp",  pages: 0, badge: null },
+      { id: "print-even-count",       label: "Make sure the page count is even",      pages: 0, badge: null },
+      { id: "print-export-pdf",       label: "Export PDF Print with bleed",           pages: 0, badge: null },
+      { id: "print-order-mixam",      label: "Order on Mixam by 12 November",         pages: 0, badge: null },
     ],
   },
 ];
