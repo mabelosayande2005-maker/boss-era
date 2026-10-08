@@ -3,13 +3,16 @@
 import { useState, useEffect } from "react";
 import { Check } from "lucide-react";
 
-// ─── types & data ─────────────────────────────────────────────────────────────
+// ─── types ────────────────────────────────────────────────────────────────────
+
+type BadgeVariant = "pages" | "note";
 
 type Item = {
   id: string;
   label: string;
-  pages: number;
-  pageRef: string;
+  pages: number;             // contribution to progress bar (min value for ranges)
+  badge: string | null;      // text shown on right — null = no badge
+  badgeVariant?: BadgeVariant;
 };
 
 type Chapter = {
@@ -21,46 +24,43 @@ type Chapter = {
   items: Item[];
 };
 
+// ─── data (exact order from original checklist) ───────────────────────────────
+
 const CHAPTERS: Chapter[] = [
   {
     id: "setup",
-    title: "Setup",
+    title: "Set-up",
     emoji: "⚙️",
     accent: "var(--sage)",
     bg: "var(--sage-pale)",
     items: [
-      { id: "s1", label: "Gather all photos & memories", pages: 0, pageRef: "task" },
-      { id: "s2", label: "Collect written content from friends", pages: 0, pageRef: "task" },
-      { id: "s3", label: "Set up Canva template & cover design", pages: 0, pageRef: "task" },
-      { id: "s4", label: "Choose fonts, colour palette & aesthetic", pages: 0, pageRef: "task" },
-      { id: "s5", label: "Plan final page count & Mixam spec", pages: 0, pageRef: "task" },
+      { id: "s1", label: "Colour and font page (delete before printing)", pages: 0, badge: null },
+      { id: "s2", label: "Master page with heart number", pages: 0, badge: null },
     ],
   },
   {
     id: "cover",
-    title: "Cover & Inside Cover",
+    title: "Cover and inside cover",
     emoji: "✨",
     accent: "var(--rose)",
     bg: "var(--rose-pale)",
     items: [
-      { id: "c1", label: "Front Cover", pages: 1, pageRef: "p. 1" },
-      { id: "c2", label: "Inside Front Cover", pages: 1, pageRef: "p. 2" },
-      { id: "c3", label: "Dedication & Opening Quote", pages: 1, pageRef: "p. 3" },
-      { id: "c4", label: "Table of Contents", pages: 1, pageRef: "p. 4" },
+      { id: "c1", label: "Front cover", pages: 0, badge: null },
+      { id: "c2", label: "Spine", pages: 0, badge: null },
+      { id: "c3", label: "Inside front cover: Contents", pages: 0, badge: "do last", badgeVariant: "note" },
     ],
   },
   {
     id: "front",
-    title: "Front of Magazine",
+    title: "Front of the magazine",
     emoji: "🌸",
     accent: "var(--lavender)",
     bg: "var(--lavender-pale)",
     items: [
-      { id: "f1", label: "Editor's Letter / Welcome", pages: 1, pageRef: "p. 5" },
-      { id: "f2", label: "21 Facts About Mabel", pages: 2, pageRef: "pp. 6–7" },
-      { id: "f3", label: "Year in Numbers", pages: 1, pageRef: "p. 8" },
-      { id: "f4", label: "Opening Spread", pages: 2, pageRef: "pp. 9–10" },
-      { id: "f5", label: "Acknowledgements Strip", pages: 1, pageRef: "p. 11" },
+      { id: "f1", label: "Editor's letter", pages: 1, badge: "1 page", badgeVariant: "pages" },
+      { id: "f2", label: "Meet the editor", pages: 2, badge: "2 pages", badgeVariant: "pages" },
+      { id: "f3", label: "Notes from my people", pages: 1, badge: "1–2 pages", badgeVariant: "pages" },
+      { id: "f4", label: "21 things I learned", pages: 2, badge: "2 pages", badgeVariant: "pages" },
     ],
   },
   {
@@ -70,12 +70,8 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--gold)",
     bg: "rgba(253,248,232,0.9)",
     items: [
-      { id: "ch1-1", label: "Chapter Opener", pages: 1, pageRef: "p. 12" },
-      { id: "ch1-2", label: "Birth & Early Childhood", pages: 2, pageRef: "pp. 13–14" },
-      { id: "ch1-3", label: "Primary School Years", pages: 2, pageRef: "pp. 15–16" },
-      { id: "ch1-4", label: "Secondary School Era", pages: 2, pageRef: "pp. 17–18" },
-      { id: "ch1-5", label: "Sixth Form & Uni Life", pages: 2, pageRef: "pp. 19–20" },
-      { id: "ch1-6", label: "The Glow-Up Gallery", pages: 1, pageRef: "p. 21" },
+      { id: "ch1-1", label: "Year in review", pages: 4, badge: "4 pages", badgeVariant: "pages" },
+      { id: "ch1-2", label: "Brainstorm page", pages: 1, badge: "1 page", badgeVariant: "pages" },
     ],
   },
   {
@@ -85,11 +81,13 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--sage)",
     bg: "var(--sage-pale)",
     items: [
-      { id: "ch2-1", label: "Chapter Opener", pages: 1, pageRef: "p. 22" },
-      { id: "ch2-2", label: "Fashion & Style", pages: 2, pageRef: "pp. 23–24" },
-      { id: "ch2-3", label: "Food & Favourite Recipes", pages: 2, pageRef: "pp. 25–26" },
-      { id: "ch2-4", label: "Travel & Adventures", pages: 2, pageRef: "pp. 27–28" },
-      { id: "ch2-5", label: "Wellness & Self-Care", pages: 1, pageRef: "p. 29" },
+      { id: "ch2-1", label: "Routines", pages: 2, badge: "2 pages", badgeVariant: "pages" },
+      { id: "ch2-2", label: "How I plan my day (one of each)", pages: 1, badge: "1–2 pages", badgeVariant: "pages" },
+      { id: "ch2-3", label: "The glow-up", pages: 2, badge: "2–4 pages", badgeVariant: "pages" },
+      { id: "ch2-4", label: "Style edit", pages: 4, badge: "4 pages", badgeVariant: "pages" },
+      { id: "ch2-5", label: "Solo date bucket list", pages: 2, badge: "2 pages", badgeVariant: "pages" },
+      { id: "ch2-6", label: "Optional: What's in Mabel's bag, fragrance and make-up", pages: 2, badge: "2 pages", badgeVariant: "pages" },
+      { id: "ch2-7", label: "Brainstorm page", pages: 1, badge: "1 page", badgeVariant: "pages" },
     ],
   },
   {
@@ -99,12 +97,10 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--rose)",
     bg: "var(--rose-pale)",
     items: [
-      { id: "ch3-1", label: "Chapter Opener", pages: 1, pageRef: "p. 30" },
-      { id: "ch3-2", label: "StudyGlow & Content Creation", pages: 2, pageRef: "pp. 31–32" },
-      { id: "ch3-3", label: "Vinted & Jewellery Business", pages: 2, pageRef: "pp. 33–34" },
-      { id: "ch3-4", label: "Tutoring & Skills", pages: 1, pageRef: "p. 35" },
-      { id: "ch3-5", label: "Goals & Wins This Year", pages: 2, pageRef: "pp. 36–37" },
-      { id: "ch3-6", label: "The Vision Board", pages: 1, pageRef: "p. 38" },
+      { id: "ch3-1", label: "Income streams, investments and balance", pages: 4, badge: "4 pages", badgeVariant: "pages" },
+      { id: "ch3-2", label: "The creator page", pages: 2, badge: "2 pages", badgeVariant: "pages" },
+      { id: "ch3-3", label: "Career mindmap", pages: 2, badge: "2 pages", badgeVariant: "pages" },
+      { id: "ch3-4", label: "Brainstorm page", pages: 1, badge: "1 page", badgeVariant: "pages" },
     ],
   },
   {
@@ -114,11 +110,12 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--lavender)",
     bg: "var(--lavender-pale)",
     items: [
-      { id: "ch4-1", label: "Chapter Opener", pages: 1, pageRef: "p. 39" },
-      { id: "ch4-2", label: "Faith Story", pages: 2, pageRef: "pp. 40–41" },
-      { id: "ch4-3", label: "Gratitude & Affirmations", pages: 2, pageRef: "pp. 42–43" },
-      { id: "ch4-4", label: "Mindset & Growth", pages: 1, pageRef: "p. 44" },
-      { id: "ch4-5", label: "Prayers & Intentions", pages: 1, pageRef: "p. 45" },
+      { id: "ch4-1", label: "My journey with God, faith and testimony", pages: 4, badge: "4 pages", badgeVariant: "pages" },
+      { id: "ch4-2", label: "Letter to God", pages: 1, badge: "1–2 pages", badgeVariant: "pages" },
+      { id: "ch4-3", label: "My prayers", pages: 2, badge: "2 pages", badgeVariant: "pages" },
+      { id: "ch4-4", label: "Answered prayers", pages: 2, badge: "2 pages", badgeVariant: "pages" },
+      { id: "ch4-5", label: "Journal pages", pages: 4, badge: "4–6 pages", badgeVariant: "pages" },
+      { id: "ch4-6", label: "Brainstorm page", pages: 1, badge: "1 page", badgeVariant: "pages" },
     ],
   },
   {
@@ -128,43 +125,43 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--gold)",
     bg: "rgba(253,248,232,0.9)",
     items: [
-      { id: "ch5-1", label: "Chapter Opener", pages: 1, pageRef: "p. 46" },
-      { id: "ch5-2", label: "21 Dreams & Bucket List", pages: 2, pageRef: "pp. 47–48" },
-      { id: "ch5-3", label: "Career & Ambitions", pages: 2, pageRef: "pp. 49–50" },
-      { id: "ch5-4", label: "Letter to 30-Year-Old Mabel", pages: 2, pageRef: "pp. 51–52" },
-      { id: "ch5-5", label: "Manifesting Board", pages: 1, pageRef: "p. 53" },
+      { id: "ch5-1", label: "Vision board", pages: 2, badge: "2–4 pages", badgeVariant: "pages" },
+      { id: "ch5-2", label: "Goal pages", pages: 1, badge: "1 per goal", badgeVariant: "note" },
+      { id: "ch5-3", label: "Passport ready", pages: 4, badge: "4 pages", badgeVariant: "pages" },
+      { id: "ch5-4", label: "Dream Man", pages: 0, badge: "final polish", badgeVariant: "note" },
     ],
   },
   {
     id: "back",
-    title: "Back of Magazine",
+    title: "Back of the magazine",
     emoji: "💌",
     accent: "var(--rose)",
     bg: "var(--rose-pale)",
     items: [
-      { id: "b1", label: "Friends' Notes & Letters", pages: 3, pageRef: "pp. 54–56" },
-      { id: "b2", label: "Birthday Messages Collage", pages: 2, pageRef: "pp. 57–58" },
-      { id: "b3", label: "Final Spread", pages: 1, pageRef: "p. 59" },
-      { id: "b4", label: "Back Cover", pages: 1, pageRef: "p. 60" },
+      { id: "b1", label: "Sudoku", pages: 2, badge: "2 pages", badgeVariant: "pages" },
+      { id: "b2", label: "Inside back cover: Letter to 22-year-old me", pages: 1, badge: "1 page", badgeVariant: "pages" },
+      { id: "b3", label: "Back cover", pages: 0, badge: null },
     ],
   },
   {
     id: "printing",
-    title: "Before Printing",
+    title: "Before printing",
     emoji: "🖨️",
     accent: "var(--sage)",
     bg: "var(--sage-pale)",
     items: [
-      { id: "p1", label: "Proofread all text", pages: 0, pageRef: "task" },
-      { id: "p2", label: "Check all images are high-res (300 dpi+)", pages: 0, pageRef: "task" },
-      { id: "p3", label: "Export PDF in correct Mixam spec", pages: 0, pageRef: "task" },
-      { id: "p4", label: "Place order on Mixam", pages: 0, pageRef: "task" },
-      { id: "p5", label: "Final check & approve proof", pages: 0, pageRef: "task" },
+      { id: "p1", label: "Delete the colour page", pages: 0, badge: null },
+      { id: "p2", label: "Check every heart page number", pages: 0, badge: null },
+      { id: "p3", label: "Proofread and check photos are sharp", pages: 0, badge: null },
+      { id: "p4", label: "Make sure the page count is even", pages: 0, badge: null },
+      { id: "p5", label: "Export PDF Print with bleed", pages: 0, badge: null },
+      { id: "p6", label: "Order on Mixam by 12 November", pages: 0, badge: null },
     ],
   },
 ];
 
 const ALL_ITEMS = CHAPTERS.flatMap(c => c.items);
+// Progress counts only items with actual pages (covers/tasks = 0)
 const TOTAL_PAGES = ALL_ITEMS.reduce((sum, i) => sum + i.pages, 0);
 const BIRTHDAY = new Date("2026-11-25T00:00:00");
 const LS_KEY = "the21issue_checked";
@@ -189,6 +186,47 @@ function useCountdown(target: Date) {
     return () => clearInterval(id);
   }, [target]);
   return t;
+}
+
+// ─── badge component ──────────────────────────────────────────────────────────
+
+function Badge({ text, variant, done }: { text: string; variant?: BadgeVariant; done: boolean }) {
+  if (done) {
+    return (
+      <span
+        className="text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0"
+        style={{ background: "rgba(143,173,160,0.12)", color: "var(--text-soft)" }}
+      >
+        {text}
+      </span>
+    );
+  }
+  if (variant === "note") {
+    return (
+      <span
+        className="text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0"
+        style={{
+          background: "rgba(212,168,83,0.12)",
+          color: "var(--gold)",
+          border: "1px solid rgba(212,168,83,0.2)",
+        }}
+      >
+        {text}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0"
+      style={{
+        background: "linear-gradient(135deg, #deeee8 0%, #ede8f5 50%, #fdf0f1 100%)",
+        color: "var(--text-mid)",
+        border: "1px solid rgba(200,184,224,0.25)",
+      }}
+    >
+      {text}
+    </span>
+  );
 }
 
 // ─── page ─────────────────────────────────────────────────────────────────────
@@ -220,8 +258,7 @@ export default function The21IssuePage() {
     .reduce((sum, i) => sum + i.pages, 0);
 
   const pct = TOTAL_PAGES > 0 ? (donePages / TOTAL_PAGES) * 100 : 0;
-
-  const allPagesDone = donePages === TOTAL_PAGES;
+  const allDone = loaded && ALL_ITEMS.every(i => checked.has(i.id));
 
   return (
     <main className="min-h-screen pb-32 md:pb-16">
@@ -239,7 +276,7 @@ export default function The21IssuePage() {
             The 21 Issue
           </h1>
           <p className="text-sm font-medium" style={{ color: "var(--text-soft)" }}>
-            Mabel's birthday magazine · production tracker ✦
+            Every page in order. Tick each one off as you finish it. ✦
           </p>
         </div>
 
@@ -273,10 +310,7 @@ export default function The21IssuePage() {
                 >
                   {String(val).padStart(2, "0")}
                 </div>
-                <span
-                  className="text-[10px] font-medium uppercase tracking-wider"
-                  style={{ color: "var(--text-soft)" }}
-                >
+                <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "var(--text-soft)" }}>
                   {label}
                 </span>
               </div>
@@ -285,7 +319,10 @@ export default function The21IssuePage() {
         </div>
 
         {/* ── Key Dates ─────────────────────────────────────────── */}
-        <div className="card mb-5 p-4" style={{ background: "rgba(253,240,241,0.7)", border: "1px solid rgba(232,180,184,0.35)" }}>
+        <div
+          className="card mb-5 p-4"
+          style={{ background: "rgba(253,240,241,0.7)", border: "1px solid rgba(232,180,184,0.35)" }}
+        >
           <p className="text-xs font-medium uppercase tracking-widest mb-3" style={{ color: "var(--text-soft)" }}>
             Key Dates
           </p>
@@ -293,7 +330,7 @@ export default function The21IssuePage() {
             {[
               { date: "1 November", note: "Friends' notes due", emoji: "📮", color: "var(--sage)" },
               { date: "12 November", note: "Order on Mixam", emoji: "🖨️", color: "var(--gold)" },
-              { date: "25 November", note: "Open on your birthday", emoji: "🎂", color: "var(--rose)" },
+              { date: "25 November", note: "Open it on your birthday", emoji: "🎂", color: "var(--rose)" },
             ].map(({ date, note, emoji, color }) => (
               <div
                 key={date}
@@ -301,9 +338,7 @@ export default function The21IssuePage() {
                 style={{ background: "rgba(255,255,255,0.6)" }}
               >
                 <span className="text-lg leading-none">{emoji}</span>
-                <span className="font-display font-bold italic text-[15px]" style={{ color }}>
-                  {date}
-                </span>
+                <span className="font-display font-bold italic text-[15px]" style={{ color }}>{date}</span>
                 <span className="text-xs" style={{ color: "var(--text-soft)" }}>— {note}</span>
               </div>
             ))}
@@ -317,7 +352,7 @@ export default function The21IssuePage() {
               Pages Complete
             </span>
             <span className="text-sm font-semibold tabular-nums" style={{ color: "var(--sage)" }}>
-              {loaded ? donePages : 0} / {TOTAL_PAGES}
+              {loaded ? donePages : 0} / {TOTAL_PAGES} pages
             </span>
           </div>
           <div className="progress-track" style={{ height: "10px" }}>
@@ -333,18 +368,12 @@ export default function The21IssuePage() {
           {CHAPTERS.map(chapter => {
             const chDone = chapter.items.filter(i => checked.has(i.id)).length;
             return (
-              <div
-                key={chapter.id}
-                className="card overflow-hidden"
-                style={{ padding: 0 }}
-              >
+              <div key={chapter.id} className="card overflow-hidden" style={{ padding: 0 }}>
+
                 {/* Chapter header */}
                 <div
                   className="px-5 py-3.5 flex items-center justify-between"
-                  style={{
-                    background: chapter.bg,
-                    borderBottom: "1px solid rgba(255,255,255,0.7)",
-                  }}
+                  style={{ background: chapter.bg, borderBottom: "1px solid rgba(255,255,255,0.7)" }}
                 >
                   <div className="flex items-center gap-2.5">
                     <span className="text-xl leading-none">{chapter.emoji}</span>
@@ -371,7 +400,6 @@ export default function The21IssuePage() {
                 <div>
                   {chapter.items.map((item, idx) => {
                     const done = loaded && checked.has(item.id);
-                    const isTask = item.pageRef === "task";
                     return (
                       <button
                         key={item.id}
@@ -388,9 +416,7 @@ export default function The21IssuePage() {
                           style={{
                             width: 20,
                             height: 20,
-                            background: done
-                              ? "var(--sage)"
-                              : "rgba(255,255,255,0.8)",
+                            background: done ? "var(--sage)" : "rgba(255,255,255,0.8)",
                             border: done ? "none" : "1.5px solid rgba(200,184,224,0.6)",
                             boxShadow: done ? "0 2px 8px rgba(143,173,160,0.3)" : "none",
                           }}
@@ -410,30 +436,9 @@ export default function The21IssuePage() {
                           {item.label}
                         </span>
 
-                        {/* Page ref / task badge */}
-                        {isTask ? (
-                          <span
-                            className="text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0"
-                            style={{
-                              background: "rgba(200,184,224,0.12)",
-                              color: "var(--text-soft)",
-                            }}
-                          >
-                            task
-                          </span>
-                        ) : (
-                          <span
-                            className="text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0"
-                            style={{
-                              background: done
-                                ? "rgba(143,173,160,0.12)"
-                                : "linear-gradient(135deg, #deeee8 0%, #ede8f5 50%, #fdf0f1 100%)",
-                              color: done ? "var(--text-soft)" : "var(--text-mid)",
-                              border: "1px solid rgba(200,184,224,0.2)",
-                            }}
-                          >
-                            {item.pageRef}
-                          </span>
+                        {/* Badge */}
+                        {item.badge && (
+                          <Badge text={item.badge} variant={item.badgeVariant} done={done} />
                         )}
                       </button>
                     );
@@ -445,7 +450,7 @@ export default function The21IssuePage() {
         </div>
 
         {/* ── All done ──────────────────────────────────────────── */}
-        {loaded && allPagesDone && (
+        {allDone && (
           <div
             className="mt-8 text-center rounded-3xl p-7"
             style={{
@@ -455,15 +460,14 @@ export default function The21IssuePage() {
           >
             <div className="text-4xl mb-2">🎉🦋✨</div>
             <p className="font-display font-bold italic text-2xl mb-1" style={{ color: "var(--text-dark)" }}>
-              The 21 Issue is ready!
+              The 21 Issue is ready to print!
             </p>
             <p className="text-sm" style={{ color: "var(--text-soft)" }}>
-              All {TOTAL_PAGES} pages complete. Happy birthday, Mabel. ✦
+              Every page done. Happy birthday, Mabel. ✦
             </p>
           </div>
         )}
 
-        {/* ── Bottom sparkle ────────────────────────────────────── */}
         <p className="text-center text-xs mt-8" style={{ color: "var(--text-soft)" }}>
           ✦ &nbsp; made with love &nbsp; ✦
         </p>
