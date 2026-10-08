@@ -34,8 +34,11 @@ const CHAPTERS: Chapter[] = [
     accent: "var(--sage)",
     bg: "var(--sage-pale)",
     items: [
-      { id: "s1", label: "Colour and font page (delete before printing)", pages: 0, badge: null },
-      { id: "s2", label: "Master page with heart number", pages: 0, badge: null },
+      { id: "s1", label: "Gather all photos & memories", pages: 0, badge: null },
+      { id: "s2", label: "Collect written content from friends", pages: 0, badge: null },
+      { id: "s3", label: "Set up Canva template & cover design", pages: 0, badge: null },
+      { id: "s4", label: "Choose fonts, colour palette & aesthetic", pages: 0, badge: null },
+      { id: "s5", label: "Plan final page count & Mixam spec", pages: 0, badge: null },
     ],
   },
   {
