@@ -142,6 +142,110 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  // Full implementation in Step 2
-  return NextResponse.json({ error: "Not implemented yet" }, { status: 501 });
+  try {
+    await ensureTables();
+    await seed();
+    const sql = getDb();
+    const body = await req.json();
+    const { action } = body;
+
+    // ── pick ─────────────────────────────────────────────────────────────────
+    if (action === "pick") {
+      const { categoryId, categoryName, optionId, optionLabel } = body as {
+        categoryId: number;
+        categoryName: string;
+        optionId: number;
+        optionLabel: string;
+      };
+      const today = todayUK();
+      // ON CONFLICT must include the partial index predicate so Postgres
+      // knows which index to target.
+      const [pick] = await sql`
+        INSERT INTO rule_of_one_picks
+          (pick_date, category_id, category_name, option_id, option_label)
+        VALUES
+          (${today}, ${categoryId}, ${categoryName}, ${optionId}, ${optionLabel})
+        ON CONFLICT (pick_date, category_id) WHERE category_id IS NOT NULL
+        DO UPDATE SET
+          option_id    = EXCLUDED.option_id,
+          option_label = EXCLUDED.option_label
+        RETURNING *
+      `;
+      return NextResponse.json({ pick });
+    }
+
+    // ── clear_pick ───────────────────────────────────────────────────────────
+    if (action === "clear_pick") {
+      const { categoryId } = body as { categoryId: number };
+      const today = todayUK();
+      await sql`
+        DELETE FROM rule_of_one_picks
+        WHERE pick_date = ${today} AND category_id = ${categoryId}
+      `;
+      return NextResponse.json({ ok: true });
+    }
+
+    // ── add_option ───────────────────────────────────────────────────────────
+    if (action === "add_option") {
+      const { categoryId, label } = body as { categoryId: number; label: string };
+      const [option] = await sql`
+        INSERT INTO rule_of_one_options (category_id, label, sort_order)
+        VALUES (
+          ${categoryId},
+          ${label.trim()},
+          (SELECT COALESCE(MAX(sort_order), -1) + 1
+           FROM rule_of_one_options WHERE category_id = ${categoryId})
+        )
+        RETURNING *
+      `;
+      return NextResponse.json({ option });
+    }
+
+    // ── rename_option ────────────────────────────────────────────────────────
+    if (action === "rename_option") {
+      const { optionId, label } = body as { optionId: number; label: string };
+      const [option] = await sql`
+        UPDATE rule_of_one_options
+        SET label = ${label.trim()}
+        WHERE id = ${optionId}
+        RETURNING *
+      `;
+      return NextResponse.json({ option });
+    }
+
+    // ── delete_option ────────────────────────────────────────────────────────
+    if (action === "delete_option") {
+      const { optionId } = body as { optionId: number };
+      // Picks that reference this option keep their option_label; option_id goes NULL.
+      await sql`DELETE FROM rule_of_one_options WHERE id = ${optionId}`;
+      return NextResponse.json({ ok: true });
+    }
+
+    // ── add_category ─────────────────────────────────────────────────────────
+    if (action === "add_category") {
+      const { name } = body as { name: string };
+      const [category] = await sql`
+        INSERT INTO rule_of_one_categories (name, sort_order)
+        VALUES (
+          ${name.trim()},
+          (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM rule_of_one_categories)
+        )
+        RETURNING *
+      `;
+      return NextResponse.json({ category });
+    }
+
+    // ── delete_category ──────────────────────────────────────────────────────
+    if (action === "delete_category") {
+      const { categoryId } = body as { categoryId: number };
+      // Options cascade-delete. Picks' category_id goes NULL (ON DELETE SET NULL).
+      await sql`DELETE FROM rule_of_one_categories WHERE id = ${categoryId}`;
+      return NextResponse.json({ ok: true });
+    }
+
+    return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+  } catch (e) {
+    console.error("[rule-of-one POST]", e);
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
 }
