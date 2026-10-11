@@ -20,6 +20,7 @@ export default function RuleOfOne({ onEditClick }: { onEditClick?: () => void })
   const [expanded,   setExpanded]   = useState<number | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [today,      setToday]      = useState("");
+  const [saveError,  setSaveError]  = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -34,25 +35,45 @@ export default function RuleOfOne({ onEditClick }: { onEditClick?: () => void })
 
   useEffect(() => { load(); }, [load]);
 
+  function showError(msg: string) {
+    setSaveError(msg);
+    setTimeout(() => setSaveError(null), 3500);
+  }
+
   async function post(body: Record<string, unknown>) {
-    await fetch("/api/rule-of-one", {
+    const res = await fetch("/api/rule-of-one", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify(body),
     });
+    if (!res.ok) throw new Error(`${res.status}`);
   }
 
   async function handlePick(cat: Category, opt: Option) {
-    const isSelected = picks[cat.id]?.option_id === opt.id;
+    const prevPicks    = picks;
+    const prevExpanded = expanded;
+    const isSelected   = picks[cat.id]?.option_id === opt.id;
+
     if (isSelected) {
-      // Tap selected pill → clear pick; keep row open so user can swap
+      // Tap selected pill → optimistically clear; keep row open so user can swap
       setPicks(prev => { const n = { ...prev }; delete n[cat.id]; return n; });
-      await post({ action: "clear_pick", categoryId: cat.id });
+      try {
+        await post({ action: "clear_pick", categoryId: cat.id });
+      } catch {
+        setPicks(prevPicks);
+        showError("Couldn't clear — check your connection");
+      }
     } else {
-      // Tap unselected pill → set pick and collapse row
+      // Tap unselected pill → optimistically set and collapse
       setPicks(prev => ({ ...prev, [cat.id]: { option_id: opt.id, option_label: opt.label } }));
       setExpanded(null);
-      await post({ action: "pick", categoryId: cat.id, categoryName: cat.name, optionId: opt.id, optionLabel: opt.label });
+      try {
+        await post({ action: "pick", categoryId: cat.id, categoryName: cat.name, optionId: opt.id, optionLabel: opt.label });
+      } catch {
+        setPicks(prevPicks);
+        setExpanded(prevExpanded); // re-open the row we collapsed
+        showError("Couldn't save — check your connection");
+      }
     }
   }
 
@@ -212,6 +233,18 @@ export default function RuleOfOne({ onEditClick }: { onEditClick?: () => void })
           })
         )}
       </div>
+
+      {/* ── Save error ──────────────────────────────────────────── */}
+      {saveError && (
+        <div
+          className="px-5 py-2"
+          style={{ background: "rgba(232,180,184,0.18)", borderTop: "1px solid rgba(232,180,184,0.2)" }}
+        >
+          <p className="text-xs text-center" style={{ color: "var(--rose)" }}>
+            ⚠ {saveError}
+          </p>
+        </div>
+      )}
 
       {/* ── Footer ──────────────────────────────────────────────── */}
       <div
