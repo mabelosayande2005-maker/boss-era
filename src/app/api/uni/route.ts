@@ -42,16 +42,29 @@ async function ensureTables() {
     )
   `;
 
+  // Timetable-aware lecture log. session_key links to the timetable constant in
+  // the frontend; NULL for ad-hoc sessions.
   await sql`
-    CREATE TABLE IF NOT EXISTS uni_lectures (
-      id             SERIAL PRIMARY KEY,
-      module_id      INTEGER REFERENCES uni_modules(id) ON DELETE CASCADE,
-      topic          TEXT NOT NULL,
-      lecture_date   DATE NOT NULL,
-      understanding  TEXT NOT NULL DEFAULT 'green',
-      notes          TEXT,
-      created_at     TIMESTAMP DEFAULT NOW()
+    CREATE TABLE IF NOT EXISTS uni_lecture_logs (
+      id            SERIAL PRIMARY KEY,
+      session_key   TEXT,
+      module_id     INTEGER REFERENCES uni_modules(id) ON DELETE SET NULL,
+      session_type  TEXT NOT NULL DEFAULT 'Lecture',
+      topic         TEXT,
+      session_date  DATE NOT NULL,
+      attended      BOOLEAN NOT NULL DEFAULT TRUE,
+      understanding TEXT,
+      notes         TEXT,
+      created_at    TIMESTAMP DEFAULT NOW()
     )
+  `;
+
+  // One log per timetabled session per date (NULLs are not equal, so ad-hoc
+  // sessions with session_key IS NULL are exempt from this constraint).
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uni_lecture_logs_key_date_idx
+      ON uni_lecture_logs (session_key, session_date)
+      WHERE session_key IS NOT NULL
   `;
 
   await sql`
@@ -108,7 +121,7 @@ export async function GET() {
     const modules       = await sql`SELECT * FROM uni_modules ORDER BY sort_order ASC, id ASC`;
     const assignments   = await sql`SELECT * FROM uni_assignments ORDER BY deadline ASC NULLS LAST, created_at ASC`;
     const goals         = await sql`SELECT * FROM uni_assignment_goals ORDER BY week_start DESC, created_at ASC`;
-    const lectures      = await sql`SELECT * FROM uni_lectures ORDER BY lecture_date DESC, created_at DESC`;
+    const lectureLogs   = await sql`SELECT * FROM uni_lecture_logs ORDER BY session_date DESC, created_at DESC`;
     const studyTasks    = await sql`
       SELECT * FROM uni_study_tasks
       WHERE completed = FALSE OR (completed_at IS NOT NULL AND completed_at::date = ${today}::date)
@@ -120,7 +133,7 @@ export async function GET() {
       goals: goals.filter(g => g.assignment_id === a.id),
     }));
 
-    return NextResponse.json({ modules, assignments: assignmentsWithGoals, lectures, studyTasks, today });
+    return NextResponse.json({ modules, assignments: assignmentsWithGoals, lectureLogs, studyTasks, today });
   } catch (e) {
     console.error("[uni GET]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
@@ -202,23 +215,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    // ── lectures ─────────────────────────────────────────────────────────────
+    // ── lecture logs ─────────────────────────────────────────────────────────
 
-    if (action === "add_lecture") {
-      const { moduleId, topic, lectureDate, understanding, notes } = body as {
-        moduleId: number; topic: string; lectureDate: string;
-        understanding: string; notes?: string;
+    if (action === "log_session") {
+      const { sessionKey, moduleId, sessionType, topic, sessionDate, attended, understanding, notes } = body as {
+        sessionKey: string | null; moduleId: number | null; sessionType: string;
+        topic?: string; sessionDate: string; attended: boolean;
+        understanding?: string | null; notes?: string;
       };
-      const [row] = await sql`
-        INSERT INTO uni_lectures (module_id, topic, lecture_date, understanding, notes)
-        VALUES (${moduleId}, ${topic.trim()}, ${lectureDate}, ${understanding || "green"}, ${notes?.trim() || null})
-        RETURNING *
-      `;
-      return NextResponse.json({ lecture: row });
+
+      let row;
+      if (sessionKey) {
+        // Upsert for timetabled sessions
+        [row] = await sql`
+          INSERT INTO uni_lecture_logs (session_key, module_id, session_type, topic, session_date, attended, understanding, notes)
+          VALUES (${sessionKey}, ${moduleId}, ${sessionType}, ${topic ?? null}, ${sessionDate}, ${attended}, ${understanding ?? null}, ${notes?.trim() ?? null})
+          ON CONFLICT (session_key, session_date) WHERE session_key IS NOT NULL
+          DO UPDATE SET
+            attended      = EXCLUDED.attended,
+            understanding = EXCLUDED.understanding,
+            notes         = EXCLUDED.notes
+          RETURNING *
+        `;
+      } else {
+        // Insert for ad-hoc sessions (no conflict clause — NULLs are exempt)
+        [row] = await sql`
+          INSERT INTO uni_lecture_logs (session_key, module_id, session_type, topic, session_date, attended, understanding, notes)
+          VALUES (NULL, ${moduleId}, ${sessionType}, ${topic?.trim() ?? null}, ${sessionDate}, ${attended}, ${understanding ?? null}, ${notes?.trim() ?? null})
+          RETURNING *
+        `;
+      }
+      return NextResponse.json({ log: row });
     }
 
-    if (action === "delete_lecture") {
-      await sql`DELETE FROM uni_lectures WHERE id = ${(body as { id: number }).id}`;
+    if (action === "delete_session_log") {
+      await sql`DELETE FROM uni_lecture_logs WHERE id = ${(body as { id: number }).id}`;
       return NextResponse.json({ ok: true });
     }
 
