@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { format, parseISO } from "date-fns";
 import { Plus, X, BookOpen, CalendarDays, Calendar, Target } from "lucide-react";
 import { getGreeting, todayISO } from "@/lib/utils";
+import RuleOfOne from "@/components/RuleOfOne";
 
 type Habit = { id: number; name: string; emoji: string; target_per_week: number; color: string; days?: string | null };
 type Task = { id: number; title: string; stream: string; completed: boolean; notes?: string };
@@ -308,6 +309,9 @@ export default function HomePage() {
 
   return (
     <div className="space-y-5 py-2">
+      {/* Rule of One — daily focus card */}
+      <RuleOfOne />
+
       {/* OAuth result banner */}
       {calBanner === "connected" && (
         <div className="card px-4 py-3 flex items-center gap-3" style={{ background: "rgba(184,212,200,0.35)", border: "1.5px solid rgba(143,173,160,0.5)" }}>
