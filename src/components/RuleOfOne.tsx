@@ -30,12 +30,13 @@ export default function RuleOfOne() {
   const [expanded,      setExpanded]      = useState<number | null>(null);
 
   // ── edit-view state ─────────────────────────────────────────────────────────
-  const [showEdit,      setShowEdit]      = useState(false);
-  const [editingOptId,  setEditingOptId]  = useState<number | null>(null);
-  const [editingLabel,  setEditingLabel]  = useState("");
-  const [newOptTexts,   setNewOptTexts]   = useState<Record<number, string>>({});
-  const [addingCat,     setAddingCat]     = useState(false);
-  const [newCatName,    setNewCatName]    = useState("");
+  const [showEdit,           setShowEdit]           = useState(false);
+  const [editingOptId,       setEditingOptId]       = useState<number | null>(null);
+  const [editingLabel,       setEditingLabel]       = useState("");
+  const [newOptTexts,        setNewOptTexts]        = useState<Record<number, string>>({});
+  const [addingCat,          setAddingCat]          = useState(false);
+  const [newCatName,         setNewCatName]         = useState("");
+  const [confirmDeleteCatId, setConfirmDeleteCatId] = useState<number | null>(null);
 
   const renameRef = useRef<HTMLInputElement>(null);
 
@@ -273,32 +274,59 @@ export default function RuleOfOne() {
               style={{ borderBottom: catIdx < categories.length - 1 ? "1px solid rgba(232,180,184,0.13)" : "none" }}
             >
               {/* Category header */}
-              <div
-                className="flex items-center justify-between px-5 py-2.5"
-                style={{ background: "rgba(232,180,184,0.07)" }}
-              >
-                <span
-                  className="text-[11px] font-semibold uppercase tracking-widest"
-                  style={{ color: "var(--text-soft)" }}
+              {confirmDeleteCatId === cat.id ? (
+                <div
+                  className="flex items-center justify-between px-5 py-2.5 gap-3"
+                  style={{ background: "rgba(232,180,184,0.12)" }}
                 >
-                  {cat.name}
-                </span>
-                <button
-                  onClick={() => deleteCategory(cat.id)}
-                  title={`Delete ${cat.name}`}
-                  className="w-6 h-6 flex items-center justify-center rounded-full transition-opacity hover:opacity-100 opacity-40"
-                  style={{ color: "var(--rose)" }}
+                  <span className="text-xs" style={{ color: "var(--text-dark)", flexShrink: 1, minWidth: 0 }}>
+                    Delete <strong>{cat.name}</strong> and its {cat.options.length} option{cat.options.length !== 1 ? "s" : ""}?
+                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => setConfirmDeleteCatId(null)}
+                      className="text-xs px-2.5 py-1 rounded-full font-medium transition-opacity hover:opacity-70"
+                      style={{ background: "rgba(255,255,255,0.8)", color: "var(--text-soft)", border: "1px solid rgba(200,190,190,0.4)" }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => { setConfirmDeleteCatId(null); deleteCategory(cat.id); }}
+                      className="text-xs px-2.5 py-1 rounded-full font-medium transition-opacity hover:opacity-80"
+                      style={{ background: "var(--rose)", color: "white" }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="flex items-center justify-between px-5 py-2.5"
+                  style={{ background: "rgba(232,180,184,0.07)" }}
                 >
-                  <X size={12} />
-                </button>
-              </div>
+                  <span
+                    className="text-[11px] font-semibold uppercase tracking-widest"
+                    style={{ color: "var(--text-soft)" }}
+                  >
+                    {cat.name}
+                  </span>
+                  <button
+                    onClick={() => setConfirmDeleteCatId(cat.id)}
+                    title={`Delete ${cat.name}`}
+                    className="w-6 h-6 flex items-center justify-center rounded-full opacity-40 transition-opacity hover:opacity-80"
+                    style={{ color: "var(--rose)" }}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
 
               {/* Options */}
               <div className="py-1">
                 {cat.options.map(opt => (
                   <div
                     key={opt.id}
-                    className="flex items-center gap-2 px-5 py-2 group"
+                    className="flex items-center gap-2 px-5 py-2"
                   >
                     {editingOptId === opt.id ? (
                       <input
@@ -334,7 +362,7 @@ export default function RuleOfOne() {
                     ) : (
                       <button
                         onClick={() => deleteOption(cat.id, opt.id)}
-                        className="w-6 h-6 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity shrink-0"
+                        className="w-6 h-6 flex items-center justify-center rounded-full opacity-40 transition-opacity hover:opacity-80 shrink-0"
                         style={{ color: "var(--text-soft)" }}
                         title="Delete option"
                       >
