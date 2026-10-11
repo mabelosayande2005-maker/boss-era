@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/", label: "Home", emoji: "✦" },
   { href: "/income", label: "Income", emoji: "💸" },
-  { href: "/summer-plan", label: "Summer", emoji: "☀️" },
+  { href: "/uni", label: "Uni", emoji: "🎓" },
   { href: "/habits", label: "Habits", emoji: "🌿" },
   { href: "/content", label: "Content", emoji: "🎬" },
   { href: "/jewellery", label: "Jewellery", emoji: "💎" },
