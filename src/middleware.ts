@@ -27,6 +27,11 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // Machine API routes use their own API-key auth
+  if (pathname.startsWith("/api/studio/machine")) {
+    return NextResponse.next();
+  }
+
   const expectedToken = await computeToken();
   const sessionCookie = req.cookies.get(COOKIE)?.value;
 

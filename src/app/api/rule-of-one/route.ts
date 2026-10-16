@@ -85,7 +85,6 @@ async function seed() {
 export async function GET() {
   try {
     await ensureTables();
-    await seed();
     const sql = getDb();
 
     const today = todayUK();
@@ -144,7 +143,6 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     await ensureTables();
-    await seed();
     const sql = getDb();
     const body = await req.json();
     const { action } = body;

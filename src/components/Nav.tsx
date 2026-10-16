@@ -12,6 +12,7 @@ const navItems = [
   { href: "/uni", label: "Uni", emoji: "🎓" },
   { href: "/habits", label: "Habits", emoji: "🌿" },
   { href: "/content", label: "Content", emoji: "🎬" },
+  { href: "/studio", label: "Studio", emoji: "🎥" },
   { href: "/jewellery", label: "Jewellery", emoji: "💎" },
   { href: "/vinted", label: "Vinted", emoji: "🛍️" },
   { href: "/career", label: "Career", emoji: "💼" },
