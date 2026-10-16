@@ -45,7 +45,7 @@ export async function GET(req: Request) {
 }
 
 // POST /api/studio/machine
-// Body: { action: "progress" | "mark_request_done" | "set_urls" }
+// Body: { action: "create" | "progress" | "mark_request_done" | "set_urls" }
 export async function POST(req: Request) {
   if (!checkApiKey(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -54,6 +54,47 @@ export async function POST(req: Request) {
     const sql = getDb();
     const body = await req.json();
     const { action } = body;
+
+    // Create a new video entry (Claude uses this — /api/studio/videos requires a session cookie)
+    if (action === "create") {
+      await sql`
+        CREATE TABLE IF NOT EXISTS studio_videos (
+          id TEXT PRIMARY KEY,
+          account TEXT NOT NULL,
+          style TEXT NOT NULL,
+          title TEXT,
+          post_date DATE,
+          brand_deal_deadline DATE,
+          status TEXT DEFAULT 'Editing',
+          progress_find BOOLEAN DEFAULT false,
+          progress_sort BOOLEAN DEFAULT false,
+          progress_build BOOLEAN DEFAULT false,
+          progress_check BOOLEAN DEFAULT false,
+          progress_done BOOLEAN DEFAULT false,
+          var_a_url TEXT,
+          var_b_url TEXT,
+          thumb_a_url TEXT,
+          thumb_b_url TEXT,
+          notes TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `;
+      const { id, account, style, title, post_date, brand_deal_deadline } = body;
+      const [row] = await sql`
+        INSERT INTO studio_videos (id, account, style, title, post_date, brand_deal_deadline)
+        VALUES (
+          ${id},
+          ${account},
+          ${style},
+          ${title || null},
+          ${post_date || null},
+          ${brand_deal_deadline || null}
+        )
+        ON CONFLICT (id) DO NOTHING
+        RETURNING *
+      `;
+      return NextResponse.json({ video: row ?? null });
+    }
 
     // Update video progress + status + editor notes
     if (action === "progress") {
