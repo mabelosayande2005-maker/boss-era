@@ -138,6 +138,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ updated: row ?? null });
     }
 
+    // Delete a video entry and all its requests
+    if (action === "delete") {
+      const { videoId } = body;
+      await sql`DELETE FROM studio_requests WHERE video_id = ${videoId}`;
+      await sql`DELETE FROM studio_videos WHERE id = ${videoId}`;
+      return NextResponse.json({ deleted: true });
+    }
+
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
     console.error("[studio/machine POST]", e);
