@@ -483,12 +483,19 @@ function VideoDetail({
   const [changeOpen, setChangeOpen] = useState(false);
   const [changeText, setChangeText] = useState("");
   const [sending, setSending] = useState<string | null>(null);
+  const [sentTypes, setSentTypes] = useState<Set<string>>(new Set());
   const pendingReqs = requests.filter(r => r.status === "pending");
+
+  const markSent = (type: string) => {
+    setSentTypes(s => new Set(s).add(type));
+    setTimeout(() => setSentTypes(s => { const n = new Set(s); n.delete(type); return n; }), 2500);
+  };
 
   const sendRequest = async (type: VideoRequest["type"], message?: string) => {
     setSending(type);
     await onRequest(type, message);
     setSending(null);
+    markSent(type);
   };
 
   const submitChange = async () => {
@@ -507,6 +514,7 @@ function VideoDetail({
     setSending("mark_posted");
     onStatusChange("Posted");
     setSending(null);
+    markSent("mark_posted");
   };
 
   return (
@@ -716,43 +724,44 @@ function VideoDetail({
           {/* Make a variation */}
           <button
             onClick={() => sendRequest("variation")}
-            disabled={sending === "variation"}
+            disabled={sending === "variation" || sentTypes.has("variation")}
             className="flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold transition-all"
             style={{
               background: "var(--cream-dark)",
-              color: "var(--text-dark)",
+              color: sentTypes.has("variation") ? "var(--sage)" : "var(--text-dark)",
               border: "1.5px solid rgba(200,184,224,0.2)",
             }}
           >
-            {sending === "variation" ? "Sending…" : "✦ Make a variation"}
+            {sentTypes.has("variation") ? "Sent ✓" : sending === "variation" ? "Sending…" : "✦ Make a variation"}
           </button>
 
           {/* Open in CapCut */}
           <button
             onClick={() => sendRequest("capcut")}
-            disabled={sending === "capcut"}
+            disabled={sending === "capcut" || sentTypes.has("capcut")}
             className="flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold transition-all"
             style={{
-              background: "#1a1a1a",
-              color: "white",
+              background: sentTypes.has("capcut") ? "#2a2a2a" : "#1a1a1a",
+              color: sentTypes.has("capcut") ? "#7ccc88" : "white",
               border: "1.5px solid #333",
             }}
           >
-            {sending === "capcut" ? "Sending…" : "▶ Open in CapCut"}
+            {sentTypes.has("capcut") ? "Sent ✓" : sending === "capcut" ? "Sending…" : "▶ Open in CapCut"}
           </button>
 
           {/* Looks good, finish it → Ready to post */}
           <button
             onClick={handleApprove}
-            disabled={sending === "approve"}
+            disabled={sending === "approve" || sentTypes.has("approve")}
             className="flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold transition-all"
             style={{
               background: "linear-gradient(135deg, #b8a0d0, #c8b8e0)",
               color: "white",
               border: "none",
+              opacity: sentTypes.has("approve") ? 0.75 : 1,
             }}
           >
-            {sending === "approve" ? "Sending…" : "★ Looks good, finish it"}
+            {sentTypes.has("approve") ? "Sent ✓" : sending === "approve" ? "Sending…" : "★ Looks good, finish it"}
           </button>
         </div>
 
@@ -760,15 +769,16 @@ function VideoDetail({
         {video.status === "Ready to post" && (
           <button
             onClick={handleMarkPosted}
-            disabled={sending === "mark_posted"}
+            disabled={sending === "mark_posted" || sentTypes.has("mark_posted")}
             className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold transition-all mt-2"
             style={{
               background: "linear-gradient(135deg, var(--sage-light), var(--sage))",
               color: "white",
               border: "none",
+              opacity: sentTypes.has("mark_posted") ? 0.75 : 1,
             }}
           >
-            {sending === "mark_posted" ? "Saving…" : "✓ Mark as posted"}
+            {sentTypes.has("mark_posted") ? "Saved ✓" : sending === "mark_posted" ? "Saving…" : "✓ Mark as posted"}
           </button>
         )}
 
@@ -793,10 +803,10 @@ function VideoDetail({
               </button>
               <button
                 onClick={submitChange}
-                disabled={!changeText.trim() || sending === "change"}
+                disabled={!changeText.trim() || sending === "change" || sentTypes.has("change")}
                 className="btn-primary text-xs"
               >
-                {sending === "change" ? "Sending…" : "Send request →"}
+                {sentTypes.has("change") ? "Sent ✓" : sending === "change" ? "Sending…" : "Send request →"}
               </button>
             </div>
           </div>
