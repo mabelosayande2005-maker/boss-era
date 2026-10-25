@@ -26,6 +26,7 @@ const navItems = [
   { href: "/notes", label: "Notes", emoji: "📝" },
   { href: "/tutoring", label: "Tutoring", emoji: "🎓" },
   { href: "/the21issue", label: "The 21 Issue", emoji: "🎂" },
+  { href: "/ct",        label: "CT",          emoji: "📺" },
 ];
 
 // First 4 always visible in the mobile bottom bar
