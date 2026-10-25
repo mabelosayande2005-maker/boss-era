@@ -19,7 +19,7 @@ const navItems = [
   { href: "/finance", label: "Finance", emoji: "📊" },
   { href: "/goals", label: "Goals", emoji: "🌟" },
   { href: "/learning", label: "Learning", emoji: "📚" },
-  { href: "/cookbook", label: "Cookbook", emoji: "🍽️" },
+  { href: "/mealprep", label: "Meal Prep", emoji: "🥗" },
   { href: "/travel", label: "Travel", emoji: "✈️" },
   { href: "/social", label: "Social", emoji: "🥂" },
   { href: "/music", label: "Music", emoji: "🎵" },
