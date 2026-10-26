@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, parseISO } from "date-fns";
-import { Plus, X, BookOpen, CalendarDays, Calendar, Target } from "lucide-react";
+import { Plus, X, BookOpen, CalendarDays, Calendar, Target, Settings, Check } from "lucide-react";
 import { getGreeting, todayISO } from "@/lib/utils";
 import RuleOfOne from "@/components/RuleOfOne";
 
@@ -10,7 +10,8 @@ type Habit = { id: number; name: string; emoji: string; target_per_week: number;
 type Task = { id: number; title: string; stream: string; completed: boolean; notes?: string };
 type Mood = { score: number; note: string } | null;
 type CalEvent = { id: string; title: string; start: string | null; end: string | null; allDay: boolean; htmlLink: string | null };
-type WeeklyGoal = { id: number; text: string };
+type WeeklyGoal = { id: number; text: string; category: string | null };
+type GoalCategory = { id: number; name: string; color: string };
 type HustleTarget = { id: number; hustle: string; target_text: string; target_count: number; current_count: number };
 
 const MOOD_EMOJIS = ["😢", "😕", "😐", "🙂", "✨"];
@@ -44,6 +45,15 @@ export default function HomePage() {
   const [weeklyGoals, setWeeklyGoals] = useState<WeeklyGoal[]>([]);
   const [newWeeklyGoal, setNewWeeklyGoal] = useState("");
   const [addingWeeklyGoal, setAddingWeeklyGoal] = useState(false);
+  const [newGoalCategory, setNewGoalCategory] = useState<string | null>(null);
+  const [goalCategories, setGoalCategories] = useState<GoalCategory[]>([]);
+  const [changingCatForGoal, setChangingCatForGoal] = useState<number | null>(null);
+  const [managingGoalCats, setManagingGoalCats] = useState(false);
+  const [editingCatId, setEditingCatId] = useState<number | null>(null);
+  const [editingCatName, setEditingCatName] = useState("");
+  const [addingCatName, setAddingCatName] = useState("");
+  const [addingCatColor, setAddingCatColor] = useState("#8fada0");
+  const [confirmDeleteCatId, setConfirmDeleteCatId] = useState<number | null>(null);
   const [todayIncome, setTodayIncome] = useState(0);
   const [newTask, setNewTask] = useState("");
   const [taskHustle, setTaskHustle] = useState<string | null>(null);
@@ -105,6 +115,7 @@ export default function HomePage() {
       setTodayIncome(parseFloat(incomeData.todayTotal?.today_net || "0"));
       if (verseData.verse) setVerse(verseData.verse);
       setWeeklyGoals(weeklyGoalsData.goals || []);
+      setGoalCategories(weeklyGoalsData.categories || []);
       setHustleTargets(hustleTargetsData.targets || []);
       setDbReady(true);
     } catch {
@@ -239,12 +250,49 @@ export default function HomePage() {
     const res = await fetch("/api/weekly-goals", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "add", text: newWeeklyGoal }),
+      body: JSON.stringify({ action: "add", text: newWeeklyGoal, category: newGoalCategory }),
     });
     const data = await res.json();
     if (data.goal) setWeeklyGoals(prev => [...prev, data.goal]);
     setNewWeeklyGoal("");
+    setNewGoalCategory(null);
     setAddingWeeklyGoal(false);
+  };
+
+  const postGoalCat = (body: Record<string, unknown>) =>
+    fetch("/api/weekly-goals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+  const setGoalCategory = async (goalId: number, category: string | null) => {
+    setWeeklyGoals(prev => prev.map(g => g.id === goalId ? { ...g, category } : g));
+    setChangingCatForGoal(null);
+    await postGoalCat({ action: "set_category", id: goalId, category });
+  };
+
+  const addGoalCategory = async () => {
+    if (!addingCatName.trim()) return;
+    const res = await postGoalCat({ action: "add_category", name: addingCatName.trim(), color: addingCatColor });
+    const data = await res.json();
+    if (data.category) setGoalCategories(prev => [...prev, data.category as GoalCategory]);
+    setAddingCatName("");
+  };
+
+  const renameGoalCategory = async (id: number) => {
+    const newName = editingCatName.trim();
+    if (!newName) { setEditingCatId(null); return; }
+    const old = goalCategories.find(c => c.id === id);
+    if (!old) return;
+    setGoalCategories(prev => prev.map(c => c.id === id ? { ...c, name: newName } : c));
+    setWeeklyGoals(prev => prev.map(g => g.category === old.name ? { ...g, category: newName } : g));
+    setEditingCatId(null);
+    await postGoalCat({ action: "rename_category", id, newName });
+  };
+
+  const deleteGoalCategory = async (id: number) => {
+    const cat = goalCategories.find(c => c.id === id);
+    setGoalCategories(prev => prev.filter(c => c.id !== id));
+    if (cat) setWeeklyGoals(prev => prev.map(g => g.category === cat.name ? { ...g, category: null } : g));
+    setConfirmDeleteCatId(null);
+    await postGoalCat({ action: "delete_category", id });
   };
 
   const deleteWeeklyGoal = async (id: number) => {
@@ -647,39 +695,66 @@ export default function HomePage() {
       </div>
 
       {/* Weekly Goals */}
-      <div className="card px-5 py-4">
+      <div className="card px-5 py-4" onClick={() => setChangingCatForGoal(null)}>
         <div className="flex items-center gap-2 mb-4">
           <Target size={18} style={{ color: "var(--rose)" }} />
           <h2 className="font-display font-bold italic text-xl" style={{ color: "var(--text-dark)" }}>
             This Week&apos;s Goals
           </h2>
-          <button
-            onClick={() => setAddingWeeklyGoal(v => !v)}
-            className="ml-auto w-7 h-7 flex items-center justify-center rounded-full transition-colors hover:opacity-70"
-            style={{ background: "var(--rose-pale)", color: "var(--rose)" }}
-            aria-label="Add goal"
-          >
-            <Plus size={15} />
-          </button>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              onClick={e => { e.stopPropagation(); setManagingGoalCats(v => !v); setChangingCatForGoal(null); }}
+              className="w-7 h-7 flex items-center justify-center rounded-full transition-colors hover:opacity-70"
+              style={{ background: managingGoalCats ? "var(--rose-pale)" : "transparent", color: managingGoalCats ? "var(--rose)" : "var(--text-soft)" }}
+              aria-label="Manage categories"
+              title="Manage categories"
+            >
+              <Settings size={13} />
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); setAddingWeeklyGoal(v => !v); }}
+              className="w-7 h-7 flex items-center justify-center rounded-full transition-colors hover:opacity-70"
+              style={{ background: "var(--rose-pale)", color: "var(--rose)" }}
+              aria-label="Add goal"
+            >
+              <Plus size={15} />
+            </button>
+          </div>
         </div>
 
         {addingWeeklyGoal && (
-          <div className="flex gap-2 mb-3">
-            <input
-              autoFocus
-              value={newWeeklyGoal}
-              onChange={e => setNewWeeklyGoal(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") addWeeklyGoal(); if (e.key === "Escape") { setAddingWeeklyGoal(false); setNewWeeklyGoal(""); } }}
-              placeholder="e.g. Film content this week…"
-              className="flex-1 px-3 py-2 rounded-xl text-sm border-0 outline-none"
-              style={{ background: "var(--cream-dark)", color: "var(--text-dark)" }}
-            />
-            <button
-              onClick={addWeeklyGoal}
-              className="btn-primary text-sm px-3 py-2"
-            >
-              Add
-            </button>
+          <div className="space-y-2 mb-3" onClick={e => e.stopPropagation()}>
+            {goalCategories.length > 0 && (
+              <div className="flex gap-1.5 flex-wrap">
+                {goalCategories.map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setNewGoalCategory(newGoalCategory === cat.name ? null : cat.name)}
+                    className="text-[10px] px-2.5 py-1 rounded-full font-medium transition-all"
+                    style={{
+                      background: newGoalCategory === cat.name ? cat.color + "30" : "transparent",
+                      color: newGoalCategory === cat.name ? cat.color : "var(--text-soft)",
+                      border: `1px solid ${newGoalCategory === cat.name ? cat.color + "70" : "rgba(200,184,224,0.3)"}`,
+                      fontWeight: newGoalCategory === cat.name ? 600 : 400,
+                    }}
+                  >
+                    {newGoalCategory === cat.name ? `✓ ${cat.name}` : cat.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                autoFocus
+                value={newWeeklyGoal}
+                onChange={e => setNewWeeklyGoal(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") addWeeklyGoal(); if (e.key === "Escape") { setAddingWeeklyGoal(false); setNewWeeklyGoal(""); setNewGoalCategory(null); } }}
+                placeholder="e.g. Film content this week…"
+                className="flex-1 px-3 py-2 rounded-xl text-sm border-0 outline-none"
+                style={{ background: "var(--cream-dark)", color: "var(--text-dark)" }}
+              />
+              <button onClick={addWeeklyGoal} className="btn-primary text-sm px-3 py-2">Add</button>
+            </div>
           </div>
         )}
 
@@ -689,24 +764,151 @@ export default function HomePage() {
           </p>
         ) : (
           <ul className="space-y-2">
-            {weeklyGoals.map(goal => (
-              <li
-                key={goal.id}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl group"
-                style={{ background: "rgba(245,213,216,0.2)", border: "1.5px solid rgba(200,150,160,0.2)" }}
-              >
-                <span className="text-rose-400 flex-shrink-0 select-none" style={{ color: "var(--rose)" }}>✦</span>
-                <span className="flex-1 text-sm leading-snug" style={{ color: "var(--text-dark)" }}>{goal.text}</span>
-                <button
-                  onClick={() => deleteWeeklyGoal(goal.id)}
-                  className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity flex-shrink-0"
-                  aria-label="Delete goal"
+            {weeklyGoals.map(goal => {
+              const cat = goalCategories.find(c => c.name === goal.category);
+              const isChanging = changingCatForGoal === goal.id;
+              return (
+                <li
+                  key={goal.id}
+                  className="rounded-xl group overflow-hidden"
+                  style={{ background: "rgba(245,213,216,0.2)", border: "1.5px solid rgba(200,150,160,0.2)" }}
+                  onClick={e => e.stopPropagation()}
                 >
-                  <X size={14} style={{ color: "var(--text-soft)" }} />
-                </button>
-              </li>
-            ))}
+                  <div className="flex items-center gap-3 px-3 py-2.5">
+                    <span className="flex-shrink-0 select-none" style={{ color: "var(--rose)" }}>✦</span>
+                    <span className="flex-1 text-sm leading-snug" style={{ color: "var(--text-dark)" }}>{goal.text}</span>
+                    <button
+                      onClick={() => setChangingCatForGoal(isChanging ? null : goal.id)}
+                      className="text-[10px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 transition-all"
+                      style={cat ? {
+                        background: cat.color + "25",
+                        color: cat.color,
+                        border: `1px solid ${cat.color}55`,
+                      } : {
+                        background: "transparent",
+                        color: "var(--text-soft)",
+                        border: "1px dashed rgba(200,184,224,0.4)",
+                        opacity: 0.7,
+                      }}
+                      title="Set category"
+                    >
+                      {goal.category ?? "+ tag"}
+                    </button>
+                    <button
+                      onClick={() => deleteWeeklyGoal(goal.id)}
+                      className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity flex-shrink-0"
+                      aria-label="Delete goal"
+                    >
+                      <X size={14} style={{ color: "var(--text-soft)" }} />
+                    </button>
+                  </div>
+                  {isChanging && (
+                    <div className="px-3 pb-3 pt-0 flex flex-wrap gap-1.5">
+                      {goalCategories.map(c => (
+                        <button
+                          key={c.id}
+                          onClick={() => setGoalCategory(goal.id, c.name)}
+                          className="text-[10px] px-2.5 py-1 rounded-full font-medium transition-all"
+                          style={{
+                            background: goal.category === c.name ? c.color + "30" : c.color + "15",
+                            color: c.color,
+                            border: `1px solid ${c.color}${goal.category === c.name ? "70" : "30"}`,
+                            fontWeight: goal.category === c.name ? 600 : 400,
+                          }}
+                        >
+                          {goal.category === c.name ? <><Check size={9} className="inline mr-0.5" />{c.name}</> : c.name}
+                        </button>
+                      ))}
+                      {goal.category && (
+                        <button
+                          onClick={() => setGoalCategory(goal.id, null)}
+                          className="text-[10px] px-2.5 py-1 rounded-full transition-all"
+                          style={{ background: "var(--cream-dark)", color: "var(--text-soft)", border: "1px solid transparent" }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
+        )}
+
+        {/* Category management panel */}
+        {managingGoalCats && (
+          <div className="mt-4 pt-3 space-y-1.5" style={{ borderTop: "1px solid rgba(232,180,184,0.25)" }} onClick={e => e.stopPropagation()}>
+            <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-soft)" }}>
+              Categories
+            </p>
+            {goalCategories.map(cat => (
+              <div key={cat.id} className="flex items-center gap-2 py-1">
+                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: cat.color }} />
+                {editingCatId === cat.id ? (
+                  <input
+                    autoFocus
+                    value={editingCatName}
+                    onChange={e => setEditingCatName(e.target.value)}
+                    onBlur={() => renameGoalCategory(cat.id)}
+                    onKeyDown={e => { if (e.key === "Enter") renameGoalCategory(cat.id); if (e.key === "Escape") setEditingCatId(null); }}
+                    className="flex-1 px-2 py-0.5 rounded-lg text-xs border-0 outline-none"
+                    style={{ background: "var(--cream-dark)", color: "var(--text-dark)" }}
+                  />
+                ) : (
+                  <button
+                    onClick={() => { setEditingCatId(cat.id); setEditingCatName(cat.name); }}
+                    className="flex-1 text-left text-sm hover:opacity-70 transition-opacity"
+                    style={{ color: "var(--text-dark)" }}
+                    title="Tap to rename"
+                  >
+                    {cat.name}
+                  </button>
+                )}
+                {confirmDeleteCatId === cat.id ? (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button onClick={() => deleteGoalCategory(cat.id)} className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ background: "var(--rose)", color: "white" }}>Del</button>
+                    <button onClick={() => setConfirmDeleteCatId(null)} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "var(--cream-dark)", color: "var(--text-soft)" }}>No</button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDeleteCatId(cat.id)}
+                    className="w-5 h-5 flex items-center justify-center rounded-full opacity-40 hover:opacity-80 flex-shrink-0 transition-opacity"
+                    style={{ color: "var(--text-soft)" }}
+                  >
+                    <X size={11} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <div className="flex gap-2 pt-1 items-center">
+              <input
+                value={addingCatName}
+                onChange={e => setAddingCatName(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") addGoalCategory(); }}
+                placeholder="New category…"
+                className="flex-1 px-2 py-1 rounded-lg text-xs border-0 outline-none"
+                style={{ background: "var(--cream-dark)", color: "var(--text-dark)" }}
+              />
+              <div className="flex gap-1">
+                {["#8fada0","#c8b8e0","#e8b4b8","#d4a853","#b06070","#7060a0","#4ab89a","#c4785a"].map(c => (
+                  <button
+                    key={c}
+                    onClick={() => setAddingCatColor(c)}
+                    className="w-4 h-4 rounded-full flex-shrink-0 transition-transform hover:scale-110"
+                    style={{ background: c, border: addingCatColor === c ? "2px solid var(--text-dark)" : "2px solid transparent" }}
+                  />
+                ))}
+              </div>
+              <button
+                onClick={addGoalCategory}
+                disabled={!addingCatName.trim()}
+                className="btn-primary text-xs px-2 py-1 disabled:opacity-40 flex-shrink-0"
+              >
+                Add
+              </button>
+            </div>
+          </div>
         )}
       </div>
 

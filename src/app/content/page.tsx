@@ -19,11 +19,11 @@ type ContentItem = {
   notes: string | null;
 };
 
-type BrandFilter = "All" | "Personal TikTok" | "StudyGlow" | "Boss Era";
+type BrandFilter = "All" | "Personal TikTok" | "StudyGlow" | "Boss Era" | "Etiosa";
 type ActiveView  = "calendar" | "ideas";
 
 // ── constants ─────────────────────────────────────────────────────────────────
-const BRANDS    = ["Personal TikTok", "StudyGlow", "Boss Era"] as const;
+const BRANDS    = ["Personal TikTok", "StudyGlow", "Boss Era", "Etiosa"] as const;
 const PLATFORMS = ["TikTok", "Instagram", "YouTube Shorts", "Pinterest"] as const;
 const STATUSES  = ["idea", "filmed", "edited", "posted"] as const;
 type Status = typeof STATUSES[number];
@@ -39,6 +39,7 @@ const BRAND_META: Record<string, { color: string; bg: string; tag: string; emoji
   "Personal TikTok": { color: "#e8b4b8", bg: "var(--rose-pale)",     tag: "tag-rose",     emoji: "🎵" },
   "StudyGlow":       { color: "#c8b8e0", bg: "var(--lavender-pale)", tag: "tag-lavender", emoji: "✨" },
   "Boss Era":        { color: "#d4a853", bg: "#fdf8ec",               tag: "tag-gold",     emoji: "👑" },
+  "Etiosa":          { color: "#c4785a", bg: "#fef1e8",               tag: "tag-rose",     emoji: "🍽️" },
 };
 
 function weekMonday(d: Date) {

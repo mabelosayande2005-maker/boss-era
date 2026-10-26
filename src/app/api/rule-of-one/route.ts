@@ -55,7 +55,7 @@ async function ensureTables() {
 const SEED_CATEGORIES = [
   { name: "Work",       sort_order: 1, options: ["TikTok Shop", "UGC", "Agency shift", "iDirect", "Tutoring", "Placement applications"] },
   { name: "Uni module", sort_order: 2, options: ["Analytics Implementation II: Visualising Data", "Business Analytics Programming II: Algorithmic Thinking", "Digital Business", "Financial Management"] },
-  { name: "Content",    sort_order: 3, options: ["studyglow", "That Girl Mabel", "Boss Era"] },
+  { name: "Content",    sort_order: 3, options: ["studyglow", "That Girl Mabel", "Boss Era", "Etiosa"] },
   { name: "Hobby",      sort_order: 4, options: ["Gym", "Dance", "Diamond art", "Making my magazine"] },
   { name: "Extra",      sort_order: 5, options: ["Xtern", "Vinted"] },
 ];

@@ -133,9 +133,19 @@ export async function GET() {
       goals: goals.filter(g => g.assignment_id === a.id),
     }));
 
+    // Log a sample of date values to aid debugging if a render crash occurs
+    if (goals.length > 0) {
+      const sample = goals[0];
+      console.log("[uni GET] sample goal week_start raw:", sample.week_start, typeof sample.week_start);
+    }
+    if (lectureLogs.length > 0) {
+      const sample = lectureLogs[0];
+      console.log("[uni GET] sample log session_date raw:", sample.session_date, typeof sample.session_date);
+    }
+
     return NextResponse.json({ modules, assignments: assignmentsWithGoals, lectureLogs, studyTasks, today });
   } catch (e) {
-    console.error("[uni GET]", e);
+    console.error("[uni GET] error:", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

@@ -77,8 +77,9 @@ const STATUS_CYCLE: Record<string, string> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function parseLocalDate(iso: string): Date {
-  const [y, m, d] = iso.split("-").map(Number);
+function parseLocalDate(iso: string | null | undefined): Date {
+  const safe = String(iso ?? "").slice(0, 10);
+  const [y, m, d] = safe.split("-").map(Number);
   return new Date(y, m - 1, d, 12, 0, 0);
 }
 
@@ -117,8 +118,15 @@ function deadlineBadge(deadline: string | null): { label: string; color: string;
   return           { label: `${days}d left`,                    color: "var(--sage)", bg: "var(--sage-pale)" };
 }
 
-function fmtWeek(ws: string): string {
-  return `Week of ${format(parseLocalDate(ws), "d MMM")}`;
+function fmtWeek(ws: string | null | undefined): string {
+  try {
+    const d = parseLocalDate(ws);
+    if (isNaN(d.getTime())) throw new Error("invalid");
+    return `Week of ${format(d, "d MMM")}`;
+  } catch {
+    console.error("[fmtWeek] could not parse week_start:", ws);
+    return ws ? `Week of ${String(ws).slice(0, 10)}` : "Previous week";
+  }
 }
 
 function safeDate(d: string): string {
@@ -135,8 +143,9 @@ function fmtTime(t: string): string {
 function groupGoalsByWeek(goals: Goal[]): Array<{ weekStart: string; goals: Goal[] }> {
   const map = new Map<string, Goal[]>();
   for (const g of goals) {
-    if (!map.has(g.week_start)) map.set(g.week_start, []);
-    map.get(g.week_start)!.push(g);
+    const ws = String(g.week_start ?? "").slice(0, 10) || "1970-01-01";
+    if (!map.has(ws)) map.set(ws, []);
+    map.get(ws)!.push(g);
   }
   return Array.from(map.entries())
     .sort(([a], [b]) => b.localeCompare(a))
