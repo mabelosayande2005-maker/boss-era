@@ -13,14 +13,17 @@ function getWeekStart(): string {
 }
 
 const SEED_CATEGORIES = [
-  { name: "Uni",           color: "#8fada0", sort_order: 1 },
-  { name: "Placement",     color: "#7060a0", sort_order: 2 },
-  { name: "Content",       color: "#e8b4b8", sort_order: 3 },
-  { name: "Hobby",         color: "#d4a853", sort_order: 4 },
-  { name: "TikTok Shop",   color: "#b06070", sort_order: 5 },
-  { name: "UGC",           color: "#c8b8e0", sort_order: 6 },
-  { name: "Tutoring",      color: "#4ab89a", sort_order: 7 },
-  { name: "Agency shifts", color: "#c4785a", sort_order: 8 },
+  { name: "Digital Business",     color: "#e8b4b8", sort_order: 1  },
+  { name: "Financial Management", color: "#d4a853", sort_order: 2  },
+  { name: "Visualising Data",     color: "#8fada0", sort_order: 3  },
+  { name: "Algorithmic Thinking", color: "#c8b8e0", sort_order: 4  },
+  { name: "Placement",            color: "#7060a0", sort_order: 5  },
+  { name: "Content",              color: "#e8b4b8", sort_order: 6  },
+  { name: "Hobby",                color: "#d4a853", sort_order: 7  },
+  { name: "TikTok Shop",          color: "#b06070", sort_order: 8  },
+  { name: "UGC",                  color: "#c8b8e0", sort_order: 9  },
+  { name: "Tutoring",             color: "#4ab89a", sort_order: 10 },
+  { name: "Agency shifts",        color: "#c4785a", sort_order: 11 },
 ];
 
 async function ensureTables() {
@@ -42,11 +45,15 @@ async function ensureTables() {
 
   await sql`ALTER TABLE weekly_goals ADD COLUMN IF NOT EXISTS category TEXT`;
 
+  // One-time migration: remove the old single "Uni" category
+  await sql`UPDATE weekly_goals SET category = NULL WHERE category = 'Uni'`;
+  await sql`DELETE FROM weekly_goal_categories WHERE name = 'Uni'`;
+
   for (const cat of SEED_CATEGORIES) {
     await sql`
       INSERT INTO weekly_goal_categories (name, color, sort_order)
       VALUES (${cat.name}, ${cat.color}, ${cat.sort_order})
-      ON CONFLICT (name) DO NOTHING
+      ON CONFLICT (name) DO UPDATE SET sort_order = EXCLUDED.sort_order, color = EXCLUDED.color
     `;
   }
 }

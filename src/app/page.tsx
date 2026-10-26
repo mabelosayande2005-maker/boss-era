@@ -127,28 +127,43 @@ export default function HomePage() {
   const fetchCalendar = useCallback(async () => {
     setCalLoading(true);
     try {
-      const [statusRes, eventsRes] = await Promise.all([
+      const [statusRes, eventsRes, checkedRes] = await Promise.all([
         fetch("/api/calendar/status", { cache: "no-store" }),
         fetch("/api/calendar/events", { cache: "no-store" }),
+        fetch(`/api/calendar/checked-events?date=${today}`, { cache: "no-store" }),
       ]);
-      const [statusData, eventsData] = await Promise.all([statusRes.json(), eventsRes.json()]);
+      const [statusData, eventsData, checkedData] = await Promise.all([statusRes.json(), eventsRes.json(), checkedRes.json()]);
       setCalConfigured(statusData.configured ?? false);
       setCalConnected(statusData.connected ?? false);
       setCalEvents(eventsData.events ?? []);
+      if (Array.isArray(checkedData.checked)) {
+        setCheckedCalEvents(new Set(checkedData.checked as string[]));
+      }
     } catch { /* calendar is optional */ }
     setCalLoading(false);
-  }, []);
+  }, [today]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   useEffect(() => {
     fetchCalendar();
-    // Restore persisted sync/checked state from localStorage (cleared automatically next day via key)
+    // Restore synced tasks from localStorage (intentionally per-device — prevents double-syncing to Google Calendar)
     try {
       const saved = localStorage.getItem(syncedKey);
       if (saved) setSyncedTasks(new Set(JSON.parse(saved) as number[]));
+      // One-time migration: move any localStorage checked events to the DB
       const savedChecked = localStorage.getItem(checkedEventsKey);
-      if (savedChecked) setCheckedCalEvents(new Set(JSON.parse(savedChecked) as string[]));
+      if (savedChecked) {
+        const ids: string[] = JSON.parse(savedChecked);
+        if (ids.length > 0) {
+          fetch("/api/calendar/checked-events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "set_bulk", event_ids: ids, check_date: today }),
+          }).catch(() => { /* best effort */ });
+        }
+        localStorage.removeItem(checkedEventsKey);
+      }
     } catch { /* localStorage unavailable */ }
 
     // Check for OAuth callback result in URL
@@ -160,7 +175,7 @@ export default function HomePage() {
       setCalBanner("error");
       window.history.replaceState({}, "", "/");
     }
-  }, [fetchCalendar, syncedKey, checkedEventsKey]);
+  }, [fetchCalendar, syncedKey, checkedEventsKey, today]);
 
   const toggleHabit = async (habitId: number) => {
     const res = await fetch("/api/habits", {
@@ -239,8 +254,13 @@ export default function HomePage() {
   const toggleCalEvent = (eventId: string) => {
     setCheckedCalEvents(prev => {
       const next = new Set(prev);
-      if (next.has(eventId)) { next.delete(eventId); } else { next.add(eventId); }
-      try { localStorage.setItem(checkedEventsKey, JSON.stringify([...next])); } catch { /* ignore */ }
+      const nowChecked = !next.has(eventId);
+      nowChecked ? next.add(eventId) : next.delete(eventId);
+      fetch("/api/calendar/checked-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set", event_id: eventId, check_date: today, checked: nowChecked }),
+      }).catch(() => { /* best effort */ });
       return next;
     });
   };

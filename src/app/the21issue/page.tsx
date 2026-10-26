@@ -25,7 +25,7 @@ type Chapter = {
 };
 
 // ─── data (exact order from original checklist) ───────────────────────────────
-// IMPORTANT: never change an item's `id` once set — ids are the localStorage keys
+// IMPORTANT: never change an item's `id` once set — ids are the database primary keys
 // that preserve Mabel's ticked state across code updates. Only add new ids; never
 // renumber or rename existing ones, even if you reorder or rename the label.
 
@@ -170,7 +170,6 @@ const ALL_ITEMS = CHAPTERS.flatMap(c => c.items);
 // Progress counts only items with actual pages (covers/tasks = 0)
 const TOTAL_PAGES = ALL_ITEMS.reduce((sum, i) => sum + i.pages, 0);
 const BIRTHDAY = new Date("2026-11-25T00:00:00");
-const LS_KEY = "the21issue_checked";
 
 // ─── countdown hook ───────────────────────────────────────────────────────────
 
@@ -243,18 +242,48 @@ export default function The21IssuePage() {
   const countdown = useCountdown(BIRTHDAY);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (raw) setChecked(new Set(JSON.parse(raw)));
-    } catch {}
-    setLoaded(true);
+    async function load() {
+      try {
+        const res = await fetch("/api/the21issue");
+        const data = await res.json();
+        const ids: string[] = Array.isArray(data.checked) ? data.checked : [];
+        if (ids.length === 0) {
+          // One-time migration from localStorage
+          try {
+            const raw = localStorage.getItem("the21issue_checked");
+            if (raw) {
+              const lsIds: string[] = JSON.parse(raw);
+              if (lsIds.length > 0) {
+                await fetch("/api/the21issue", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "set_bulk", item_ids: lsIds }),
+                });
+                localStorage.removeItem("the21issue_checked");
+                setChecked(new Set(lsIds));
+                setLoaded(true);
+                return;
+              }
+            }
+          } catch { /* ignore */ }
+        }
+        setChecked(new Set(ids));
+      } catch { /* ignore */ }
+      setLoaded(true);
+    }
+    load();
   }, []);
 
   function toggle(id: string) {
     setChecked(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      localStorage.setItem(LS_KEY, JSON.stringify([...next]));
+      const nowChecked = !next.has(id);
+      nowChecked ? next.add(id) : next.delete(id);
+      fetch("/api/the21issue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set", item_id: id, checked: nowChecked }),
+      }).catch(() => { /* best effort */ });
       return next;
     });
   }

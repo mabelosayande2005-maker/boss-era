@@ -47,12 +47,6 @@ const CAT: Record<Category, { label: string; emoji: string; color: string; bg: s
   cupboard: { label: "Cupboard", emoji: "🗄️", color: "var(--gold)",     bg: "rgba(253,248,232,0.45)", border: "rgba(212,168,83,0.2)"   },
 };
 
-const LS = {
-  stock:    "mp_stock",
-  recipes:  "mp_recipes",
-  mealplan: "mp_mealplan",
-  shopping: "mp_shopping",
-};
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -116,20 +110,66 @@ export default function MealPrepPage() {
 
   // ── Persistence ────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    try {
-      const s = localStorage.getItem(LS.stock);    if (s) setStock(JSON.parse(s));
-      const r = localStorage.getItem(LS.recipes);  if (r) setRecipes(JSON.parse(r));
-      const m = localStorage.getItem(LS.mealplan); if (m) setMealPlan(JSON.parse(m));
-      const l = localStorage.getItem(LS.shopping); if (l) setShopping(JSON.parse(l));
-    } catch { /* ignore */ }
-    setLoaded(true);
-  }, []);
+  function post(body: Record<string, unknown>) {
+    return fetch("/api/mealprep", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch(() => { /* best effort */ });
+  }
 
-  const saveStock    = (n: StockItem[])                          => { setStock(n);    localStorage.setItem(LS.stock,    JSON.stringify(n)); };
-  const saveRecipes  = (n: Recipe[])                             => { setRecipes(n);  localStorage.setItem(LS.recipes,  JSON.stringify(n)); };
-  const saveMealPlan = (n: Partial<Record<Day, DayMeal>>)        => { setMealPlan(n); localStorage.setItem(LS.mealplan, JSON.stringify(n)); };
-  const saveShopping = (n: ShoppingItem[])                       => { setShopping(n); localStorage.setItem(LS.shopping, JSON.stringify(n)); };
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch("/api/mealprep");
+        const data = await res.json();
+        const hasData =
+          (data.stock?.length ?? 0) > 0 ||
+          (data.recipes?.length ?? 0) > 0 ||
+          Object.keys(data.mealPlan ?? {}).length > 0 ||
+          (data.shopping?.length ?? 0) > 0;
+        if (!hasData) {
+          // One-time migration from localStorage
+          try {
+            const s = localStorage.getItem("mp_stock");
+            const r = localStorage.getItem("mp_recipes");
+            const m = localStorage.getItem("mp_mealplan");
+            const l = localStorage.getItem("mp_shopping");
+            const lsStock: StockItem[] = s ? JSON.parse(s) : [];
+            const lsRecipes: Recipe[] = r ? JSON.parse(r) : [];
+            const lsMealPlan: Partial<Record<Day, DayMeal>> = m ? JSON.parse(m) : {};
+            const lsShopping: ShoppingItem[] = l ? JSON.parse(l) : [];
+            const hasSomething =
+              lsStock.length > 0 || lsRecipes.length > 0 ||
+              Object.keys(lsMealPlan).length > 0 || lsShopping.length > 0;
+            if (hasSomething) {
+              await fetch("/api/mealprep", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "migrate", stock: lsStock, recipes: lsRecipes, mealPlan: lsMealPlan, shopping: lsShopping }),
+              });
+              localStorage.removeItem("mp_stock");
+              localStorage.removeItem("mp_recipes");
+              localStorage.removeItem("mp_mealplan");
+              localStorage.removeItem("mp_shopping");
+              setStock(lsStock);
+              setRecipes(lsRecipes);
+              setMealPlan(lsMealPlan);
+              setShopping(lsShopping);
+              setLoaded(true);
+              return;
+            }
+          } catch { /* ignore */ }
+        }
+        setStock(data.stock ?? []);
+        setRecipes(data.recipes ?? []);
+        setMealPlan(data.mealPlan ?? {});
+        setShopping(data.shopping ?? []);
+      } catch { /* ignore */ }
+      setLoaded(true);
+    }
+    load();
+  }, []);
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
@@ -163,16 +203,21 @@ export default function MealPrepPage() {
       id: uid(), name: sName.trim(), category: sCat,
       quantity: sQty.trim(), expiryDate: sExpiry || undefined, used: false,
     };
-    saveStock([...stock, item]);
+    setStock(prev => [...prev, item]);
+    post({ action: "add_stock", id: item.id, name: item.name, category: item.category, quantity: item.quantity, expiryDate: item.expiryDate });
     setSName(""); setSQty(""); setSExpiry(""); setAddingStock(false);
   }
 
   function toggleUsed(id: string) {
-    saveStock(stock.map(s => s.id === id ? { ...s, used: !s.used } : s));
+    const item = stock.find(s => s.id === id);
+    const nowUsed = item ? !item.used : false;
+    setStock(prev => prev.map(s => s.id === id ? { ...s, used: nowUsed } : s));
+    post({ action: "toggle_used", id, used: nowUsed });
   }
 
   function deleteStockItem(id: string) {
-    saveStock(stock.filter(s => s.id !== id));
+    setStock(prev => prev.filter(s => s.id !== id));
+    post({ action: "delete_stock", id });
   }
 
   // ── Recipe actions ─────────────────────────────────────────────────────────
@@ -185,19 +230,23 @@ export default function MealPrepPage() {
       emoji: rEmoji.trim() || "🍽️",
       ingredients: rIngs.map(s => s.trim()).filter(Boolean),
     };
-    saveRecipes([...recipes, recipe]);
+    setRecipes(prev => [...prev, recipe]);
+    post({ action: "add_recipe", id: recipe.id, title: recipe.title, emoji: recipe.emoji, ingredients: recipe.ingredients });
     setRTitle(""); setREmoji("🍽️"); setRIngs([""]); setAddingRecipe(false);
   }
 
   function deleteRecipe(id: string) {
-    saveRecipes(recipes.filter(r => r.id !== id));
-    const next = { ...mealPlan };
-    DAYS.forEach(day => {
-      if (next[day]?.recipeId === id) {
-        next[day] = next[day]?.text ? { text: next[day]!.text } : undefined;
-      }
+    setRecipes(prev => prev.filter(r => r.id !== id));
+    setMealPlan(prev => {
+      const next = { ...prev };
+      DAYS.forEach(day => {
+        if (next[day]?.recipeId === id) {
+          next[day] = next[day]?.text ? { text: next[day]!.text } : undefined;
+        }
+      });
+      return next;
     });
-    saveMealPlan(next);
+    post({ action: "delete_recipe", id });
   }
 
   // ── Meal plan actions ──────────────────────────────────────────────────────
@@ -212,22 +261,21 @@ export default function MealPrepPage() {
 
   function saveDayMeal() {
     if (!editingDay) return;
-    const next = { ...mealPlan };
     if (editText.trim()) {
-      next[editingDay] = { text: editText.trim(), recipeId: editRecipeId };
+      setMealPlan(prev => ({ ...prev, [editingDay!]: { text: editText.trim(), recipeId: editRecipeId } }));
+      post({ action: "set_day_meal", day: editingDay, text: editText.trim(), recipeId: editRecipeId });
     } else {
-      delete next[editingDay];
+      setMealPlan(prev => { const n = { ...prev }; delete n[editingDay!]; return n; });
+      post({ action: "clear_day_meal", day: editingDay });
     }
-    saveMealPlan(next);
     setEditingDay(null);
     setShowRecipePicker(false);
   }
 
   function clearDay(day: Day) {
-    const next = { ...mealPlan };
-    delete next[day];
-    saveMealPlan(next);
+    setMealPlan(prev => { const n = { ...prev }; delete n[day]; return n; });
     if (editingDay === day) setEditingDay(null);
+    post({ action: "clear_day_meal", day });
   }
 
   // Adds all missing recipe ingredients from the meal plan to the shopping list.
@@ -248,7 +296,10 @@ export default function MealPrepPage() {
         }
       });
     });
-    if (toAdd.length > 0) saveShopping([...shopping, ...toAdd]);
+    if (toAdd.length > 0) {
+      setShopping(prev => [...prev, ...toAdd]);
+      post({ action: "bulk_add_shopping", items: toAdd.map(i => ({ id: i.id, name: i.name, fromMeal: i.fromMeal })) });
+    }
     return toAdd.length;
   }
 
@@ -256,20 +307,27 @@ export default function MealPrepPage() {
 
   function addShopItem() {
     if (!shopName.trim()) return;
-    saveShopping([...shopping, { id: uid(), name: shopName.trim(), checked: false }]);
+    const item: ShoppingItem = { id: uid(), name: shopName.trim(), checked: false };
+    setShopping(prev => [...prev, item]);
+    post({ action: "add_shopping", id: item.id, name: item.name });
     setShopName(""); setAddingShop(false);
   }
 
   function toggleShop(id: string) {
-    saveShopping(shopping.map(s => s.id === id ? { ...s, checked: !s.checked } : s));
+    const item = shopping.find(s => s.id === id);
+    const nowChecked = item ? !item.checked : false;
+    setShopping(prev => prev.map(s => s.id === id ? { ...s, checked: nowChecked } : s));
+    post({ action: "toggle_shopping", id, checked: nowChecked });
   }
 
   function deleteShopItem(id: string) {
-    saveShopping(shopping.filter(s => s.id !== id));
+    setShopping(prev => prev.filter(s => s.id !== id));
+    post({ action: "delete_shopping", id });
   }
 
   function clearChecked() {
-    saveShopping(shopping.filter(s => !s.checked));
+    setShopping(prev => prev.filter(s => !s.checked));
+    post({ action: "clear_checked_shopping" });
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -740,7 +798,9 @@ export default function MealPrepPage() {
                                     <button
                                       onClick={() => {
                                         if (!shopping.some(s => s.name.toLowerCase() === ing.toLowerCase())) {
-                                          saveShopping([...shopping, { id: uid(), name: ing, checked: false }]);
+                                          const newItem: ShoppingItem = { id: uid(), name: ing, checked: false };
+                                          setShopping(prev => [...prev, newItem]);
+                                          post({ action: "add_shopping", id: newItem.id, name: newItem.name });
                                         }
                                         setTab("shopping");
                                       }}

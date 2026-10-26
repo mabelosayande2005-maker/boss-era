@@ -78,9 +78,6 @@ const DEFAULT_THEMES: ThemeItem[] = [
   { id: "theme-tracy",  title: "Tracy Beaker"        },
 ];
 
-const LS_CHECKLIST = "ct_checklist";
-const LS_BUDGET    = "ct_budget";
-const LS_THEMES    = "ct_themes";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -118,29 +115,87 @@ export default function CTPage() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_CHECKLIST);
-      if (raw) setChecked(new Set(JSON.parse(raw)));
-      const bRaw = localStorage.getItem(LS_BUDGET);
-      if (bRaw) setBudget(JSON.parse(bRaw));
-      const tRaw = localStorage.getItem(LS_THEMES);
-      if (tRaw) setThemes(JSON.parse(tRaw));
-    } catch { /* ignore */ }
-    setLoaded(true);
+    async function load() {
+      try {
+        const res = await fetch("/api/ct");
+        const data = await res.json();
+        const dbChecked: string[] = Array.isArray(data.checklist) ? data.checklist : [];
+        const dbBudget: BudgetData | null = data.budget ?? null;
+        const dbThemes: ThemeItem[] | null = Array.isArray(data.themes) && data.themes.length > 0 ? data.themes : null;
+        const isBlank = dbChecked.length === 0 && (dbBudget === null || (dbBudget.ticketsSold === 0 && dbBudget.costs.length === 0)) && dbThemes === null;
+        if (isBlank) {
+          // One-time migration from localStorage
+          try {
+            const rawC = localStorage.getItem("ct_checklist");
+            const rawB = localStorage.getItem("ct_budget");
+            const rawT = localStorage.getItem("ct_themes");
+            const lsChecked: string[] = rawC ? JSON.parse(rawC) : [];
+            const lsBudget: BudgetData | null = rawB ? JSON.parse(rawB) : null;
+            const lsThemes: ThemeItem[] | null = rawT ? JSON.parse(rawT) : null;
+            const hasSomething = lsChecked.length > 0 || lsBudget !== null || lsThemes !== null;
+            if (hasSomething) {
+              const migBudget = lsBudget ?? { ticketsSold: 0, costs: [] };
+              const migThemes = lsThemes ?? DEFAULT_THEMES;
+              await fetch("/api/ct", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "set_bulk_checks", item_ids: lsChecked }),
+              });
+              await fetch("/api/ct", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "migrate_budget", tickets_sold: migBudget.ticketsSold, costs: migBudget.costs }),
+              });
+              await fetch("/api/ct", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "migrate_themes", themes: migThemes }),
+              });
+              localStorage.removeItem("ct_checklist");
+              localStorage.removeItem("ct_budget");
+              localStorage.removeItem("ct_themes");
+              setChecked(new Set(lsChecked));
+              setBudget(migBudget);
+              setThemes(migThemes);
+              setLoaded(true);
+              return;
+            }
+          } catch { /* ignore */ }
+        }
+        setChecked(new Set(dbChecked));
+        if (dbBudget) setBudget(dbBudget);
+        if (dbThemes) setThemes(dbThemes);
+      } catch { /* ignore */ }
+      setLoaded(true);
+    }
+    load();
   }, []);
+
+  function post(body: Record<string, unknown>) {
+    return fetch("/api/ct", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch(() => { /* best effort */ });
+  }
 
   function toggleCheck(id: string) {
     setChecked(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      localStorage.setItem(LS_CHECKLIST, JSON.stringify([...next]));
+      const nowChecked = !next.has(id);
+      nowChecked ? next.add(id) : next.delete(id);
+      post({ action: "set_check", item_id: id, checked: nowChecked });
       return next;
     });
   }
 
   function saveBudget(next: BudgetData) {
     setBudget(next);
-    localStorage.setItem(LS_BUDGET, JSON.stringify(next));
+  }
+
+  function setTickets(n: number) {
+    saveBudget({ ...budget, ticketsSold: n });
+    post({ action: "set_tickets", tickets_sold: n });
   }
 
   function addCost() {
@@ -153,27 +208,27 @@ export default function CTPage() {
       receipt: costReceipt.trim() || undefined,
     };
     saveBudget({ ...budget, costs: [...budget.costs, cost] });
+    post({ action: "add_cost", id: cost.id, name: cost.name, amount: cost.amount, receipt: cost.receipt });
     setCostName(""); setCostAmount(""); setCostReceipt("");
     setAddingCost(false);
   }
 
   function deleteCost(id: string) {
     saveBudget({ ...budget, costs: budget.costs.filter(c => c.id !== id) });
-  }
-
-  function saveThemes(next: ThemeItem[]) {
-    setThemes(next);
-    localStorage.setItem(LS_THEMES, JSON.stringify(next));
+    post({ action: "delete_cost", id });
   }
 
   function addTheme() {
     if (!newTheme.trim()) return;
-    saveThemes([...themes, { id: `theme-${Date.now()}`, title: newTheme.trim() }]);
+    const newItem: ThemeItem = { id: `theme-${Date.now()}`, title: newTheme.trim() };
+    setThemes(prev => [...prev, newItem]);
+    post({ action: "add_theme", id: newItem.id, title: newItem.title });
     setNewTheme(""); setAddingTheme(false);
   }
 
   function deleteTheme(id: string) {
-    saveThemes(themes.filter(t => t.id !== id));
+    setThemes(prev => prev.filter(t => t.id !== id));
+    post({ action: "delete_theme", id });
   }
 
   function moveTheme(id: string, dir: -1 | 1) {
@@ -183,7 +238,8 @@ export default function CTPage() {
     const swap = idx + dir;
     if (swap < 0 || swap >= next.length) return;
     [next[idx], next[swap]] = [next[swap], next[idx]];
-    saveThemes(next);
+    setThemes(next);
+    post({ action: "reorder_themes", ordered_ids: next.map(t => t.id) });
   }
 
   const ticketIncome = budget.ticketsSold * 3;
@@ -460,7 +516,7 @@ export default function CTPage() {
                 <span className="text-sm flex-1" style={{ color: "var(--text-mid)" }}>Tickets sold</span>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => saveBudget({ ...budget, ticketsSold: Math.max(0, budget.ticketsSold - 1) })}
+                    onClick={() => setTickets(Math.max(0, budget.ticketsSold - 1))}
                     className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-lg transition-colors hover:opacity-70"
                     style={{ background: "var(--cream-dark)", color: "var(--text-mid)" }}
                   >
@@ -473,7 +529,7 @@ export default function CTPage() {
                     {budget.ticketsSold}
                   </span>
                   <button
-                    onClick={() => saveBudget({ ...budget, ticketsSold: budget.ticketsSold + 1 })}
+                    onClick={() => setTickets(budget.ticketsSold + 1)}
                     className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-lg transition-colors hover:opacity-70"
                     style={{ background: "rgba(143,173,160,0.15)", color: "var(--sage)" }}
                   >
